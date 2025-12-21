@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod app_menus;
 mod image_story;
 mod input_story;
@@ -555,8 +557,8 @@ impl StoryState {
 
     fn to_story(
         &self,
-        window: &mut Window,
-        cx: &mut App,
+        _window: &mut Window,
+        _cx: &mut App,
     ) -> (
         &'static str,
         &'static str,
@@ -565,6 +567,7 @@ impl StoryState {
         AnyView,
         fn(AnyView, bool, &mut Window, &mut App),
     ) {
+        #[allow(unused_macros)]
         macro_rules! story {
             ($klass:tt) => {
                 (
