@@ -2,10 +2,19 @@ use gpui::div;
 use gpui::*;
 use gpui_component::ActiveTheme;
 
+/// Child element inside a node (partition or swc)
+#[derive(Clone, Debug)]
+pub struct NodeChild {
+    pub name: String,
+    pub kind: String, // "partition" or "swc"
+    pub children: Vec<NodeChild>,
+}
+
 // Simple draggable node with label
 pub struct GpugNode {
     pub id: u64,
     pub name: String,
+    pub node_type: String, // "ecu", "bus", "interface", etc.
     pub x: Pixels,
     pub y: Pixels,
     // Offset from the node's origin to the cursor at drag start
@@ -17,13 +26,117 @@ pub struct GpugNode {
     pub container_offset: Point<Pixels>,
     // Actual node width (calculated based on text content)
     pub width: f32,
+    // Actual node height (calculated based on children)
+    pub height: f32,
+    // Child elements (partitions, swcs)
+    pub children: Vec<NodeChild>,
+}
+
+impl GpugNode {
+    /// Estimate node dimensions for hit testing (conservative/larger estimate)
+    pub fn estimate_dimensions(&self) -> (f32, f32) {
+        let base_width = 120.0f32;
+        let header_height = 28.0f32;
+        let char_width = 7.2f32;
+        let padding = 24.0f32;
+        
+        // Width from name and type
+        let name_width = self.name.len() as f32 * char_width + padding;
+        let type_width = self.node_type.len() as f32 * 6.0 + 40.0;
+        let mut content_width = name_width.max(type_width).max(base_width);
+        
+        if self.children.is_empty() {
+            return (content_width, header_height);
+        }
+        
+        // Estimate height: header + partitions stacked vertically
+        // Be generous with estimates to ensure hit testing works
+        let mut total_child_height = 0.0f32;
+        let mut max_partition_width = 0.0f32;
+        
+        for child in &self.children {
+            // Each swc is approximately 45px tall (label + name + padding + margin)
+            let swc_count = child.children.len().max(1);
+            // Partition header ~35px + swcs (stacked or wrapped)
+            // Assume worst case: all swcs on separate rows
+            let partition_height = 40.0 + (swc_count as f32 * 45.0);
+            total_child_height += partition_height + 8.0; // gap between partitions
+            
+            // Estimate partition width based on longest swc name
+            let partition_name_width = child.name.len() as f32 * 6.0 + 50.0;
+            let max_swc_width = child.children.iter()
+                .map(|s| s.name.len() as f32 * 6.0 + 50.0)
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap_or(60.0);
+            // Partition needs to fit at least 2 swcs side by side or 1 wide one
+            let partition_width = partition_name_width.max(max_swc_width * 2.0 + 20.0);
+            max_partition_width = max_partition_width.max(partition_width);
+        }
+        
+        // Node width = max of header width and partition widths + padding
+        content_width = content_width.max(max_partition_width + 16.0);
+        let node_height = header_height + total_child_height + 12.0;
+        
+        (content_width, node_height)
+    }
+    
+    /// Render a child element (partition or swc) recursively
+    fn render_child(child: &NodeChild, zoom: f32, text_color: Hsla, border_color: Hsla) -> Div {
+        let char_width = 6.0f32;
+        let padding = 16.0f32;
+        let child_width = (child.name.len() as f32 * char_width + padding).max(60.0);
+        
+        // Different background colors for partition vs swc
+        let (bg, label_color) = match child.kind.as_str() {
+            "partition" => (rgb(0x2a4a6a), rgb(0x88aacc)), // Blue-ish for partitions
+            "swc" => (rgb(0x3a5a3a), rgb(0x88cc88)),       // Green-ish for swc
+            _ => (rgb(0x4a4a4a), rgb(0xaaaaaa)),
+        };
+        
+        let mut container = div()
+            .m(px(2.0 * zoom))
+            .p(px(4.0 * zoom))
+            .min_w(px(child_width * zoom))
+            .bg(bg)
+            .border(px(1.0))
+            .border_color(border_color)
+            .rounded(px(3.0 * zoom))
+            .flex()
+            .flex_col()
+            .gap(px(2.0 * zoom))
+            .child(
+                div()
+                    .text_size(px(9.0 * zoom))
+                    .text_color(label_color)
+                    .child(format!("«{}»", child.kind))
+            )
+            .child(
+                div()
+                    .text_size(px(10.0 * zoom))
+                    .text_color(text_color)
+                    .child(child.name.clone())
+            );
+        
+        // Add nested children (swcs inside partitions)
+        if !child.children.is_empty() {
+            let children_container = div()
+                .flex()
+                .flex_wrap()
+                .gap(px(2.0 * zoom))
+                .children(
+                    child.children.iter().map(|c| Self::render_child(c, zoom, text_color, border_color))
+                );
+            container = container.child(children_container);
+        }
+        
+        container
+    }
 }
 
 impl Render for GpugNode {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let base_width = 80.0f32;
-        let base_height = 32.0f32;
-        let port_size = base_height / 10.0 * 3.0; // Port is about 1/10th of node, but visible
+        let header_height = 28.0f32;
+        let port_size = 10.0f32;
         
         // Get theme colors
         let text_color = cx.theme().foreground;
@@ -31,55 +144,109 @@ impl Render for GpugNode {
         let bg_color = cx.theme().secondary;
         let selected_border = cx.theme().ring;
         
-        // Left port (incoming) - positioned relative to left edge
+        // Type-specific colors
+        let (type_bg, type_label_color) = match self.node_type.as_str() {
+            "ecu" => (rgb(0x4a3a6a), rgb(0xcc88ff)),  // Purple for ECU
+            "bus" => (rgb(0x6a5a3a), rgb(0xffcc88)),  // Orange for bus
+            _ => (rgb(0x4a4a4a), rgb(0xaaaaaa)),
+        };
+        
+        // Estimate dimensions for hit testing (actual layout is handled by flex)
+        let (estimated_width, estimated_height) = self.estimate_dimensions();
+        let has_children = !self.children.is_empty();
+        
+        // Update stored dimensions for edge routing and hit testing
+        self.width = estimated_width;
+        self.height = estimated_height;
+        
+        // Base width for the node (minimum)
+        let base_width = 120.0f32;
+        let char_width = 7.2f32;
+        let padding = 24.0f32;
+        let name_width = self.name.len() as f32 * char_width + padding;
+        let min_width = name_width.max(base_width);
+        
+        // Header with type label and name
+        let header = div()
+            .w_full()
+            .px(px(8.0 * self.zoom))
+            .py(px(4.0 * self.zoom))
+            .flex()
+            .items_center()
+            .gap(px(8.0 * self.zoom))
+            .child(
+                // Type badge
+                div()
+                    .px(px(4.0 * self.zoom))
+                    .py(px(1.0 * self.zoom))
+                    .bg(type_bg)
+                    .rounded(px(2.0 * self.zoom))
+                    .text_size(px(9.0 * self.zoom))
+                    .text_color(type_label_color)
+                    .child(format!("«{}»", self.node_type))
+            )
+            .child(
+                // Name
+                div()
+                    .text_size(px(11.0 * self.zoom))
+                    .text_color(text_color)
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(self.name.clone())
+            );
+        
+        // Children container (partitions and swcs) - stack vertically
+        let children_container = if has_children {
+            Some(
+                div()
+                    .w_full()
+                    .px(px(4.0 * self.zoom))
+                    .pb(px(4.0 * self.zoom))
+                    .flex()
+                    .flex_col() // Stack partitions vertically
+                    .gap(px(4.0 * self.zoom))
+                    .children(
+                        self.children.iter().map(|c| Self::render_child(c, self.zoom, text_color, border_color))
+                    )
+            )
+        } else {
+            None
+        };
+        
+        // Left port (incoming)
         let left_port = div()
             .absolute()
             .left(px(-port_size / 2.0 * self.zoom))
-            .top(px((base_height - port_size) / 2.0 * self.zoom))
+            .top(px((header_height - port_size) / 2.0 * self.zoom))
             .size(px(port_size * self.zoom))
             .bg(rgb(0x4488ff))
             .border(px(1.0))
             .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
-        // Right port (outgoing) - positioned relative to right edge
+        // Right port (outgoing)
         let right_port = div()
             .absolute()
             .right(px(-port_size / 2.0 * self.zoom))
-            .top(px((base_height - port_size) / 2.0 * self.zoom))
+            .top(px((header_height - port_size) / 2.0 * self.zoom))
             .size(px(port_size * self.zoom))
             .bg(rgb(0xff8844))
             .border(px(1.0))
             .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
-        // Calculate width based on text: approximate 7.2px per character at 12px font size + padding
-        let char_width = 7.2f32;
-        let padding = 24.0f32; // 12px padding on each side
-        let text_based_width = self.name.len() as f32 * char_width + padding;
-        let node_width = text_based_width.max(base_width);
-        
-        // Update stored width for edge routing
-        self.width = node_width;
-        
-        // Node body with explicit width for proper hit testing
-        let node_body = div()
+        // Node body - use flex layout to naturally size to content
+        let mut node_body = div()
             .id(("node", self.id as usize))
-            .w(px(node_width * self.zoom))
-            .h(px(base_height * self.zoom))
-            .px(px(12.0 * self.zoom))
+            .min_w(px(min_width * self.zoom))
             .bg(bg_color)
             .border(px(2.0))
             .border_color(if self.selected { selected_border } else { border_color })
             .rounded(px(4.0 * self.zoom))
             .shadow_sm()
             .flex()
-            .items_center()
-            .justify_center()
-            .text_color(text_color)
-            .text_size(px(12.0 * self.zoom))
+            .flex_col()
             .cursor_move()
-            .child(self.name.clone())
+            .child(header)
             // Start a drag with this node's id as payload
             .on_drag(self.id, |_id: &u64, _offset, _window, cx| {
                 cx.new(|_| DragPreview)
@@ -116,6 +283,10 @@ impl Render for GpugNode {
                     this.drag_offset = None;
                 }
             }));
+        
+        if let Some(children) = children_container {
+            node_body = node_body.child(children);
+        }
 
         // Wrapper to position ports relative to node_body
         let node_wrapper = div()

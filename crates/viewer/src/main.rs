@@ -7,7 +7,7 @@ use gpui_component::{
 };
 use gpui_component_assets::Assets;
 use gpui_component_story::Open;
-use gpug::{EdgeRouting, Graph, GpugEdge, GpugNode};
+use gpug::{EdgeRouting, Graph, GpugEdge, GpugNode, NodeChild};
 use tracing::error;
 use std::collections::HashMap;
 
@@ -70,9 +70,18 @@ fn parse_kdl_model(content: &str) -> (Vec<GpugNode>, Vec<GpugEdge>) {
             
             node_name_to_index.insert(name.clone(), index);
             
+            // Extract children (partitions and swcs) for ECUs
+            let children = if type_val == "ecu" {
+                extract_node_children(kdl_node)
+            } else {
+                Vec::new()
+            };
+            
             nodes.push(GpugNode {
                 id,
                 name: name.clone(),
+                node_type: type_val,
+                children,
                 x: px(x),
                 y: px(y),
                 drag_offset: None,
@@ -81,6 +90,7 @@ fn parse_kdl_model(content: &str) -> (Vec<GpugNode>, Vec<GpugEdge>) {
                 selected: false,
                 container_offset: point(px(0.0), px(0.0)),
                 width: 80.0, // Default width, will be updated after first render
+                height: 32.0, // Default height, will be updated after first render
             });
             
             id += 1;
@@ -128,6 +138,67 @@ fn parse_kdl_model(content: &str) -> (Vec<GpugNode>, Vec<GpugEdge>) {
     }
     
     (nodes, edges)
+}
+
+/// Extract partition and swc children from a KDL node
+fn extract_node_children(kdl_node: &kdl::KdlNode) -> Vec<NodeChild> {
+    let mut children = Vec::new();
+    
+    if let Some(kdl_children) = kdl_node.children() {
+        for child in kdl_children.nodes() {
+            let node_name = child.name().to_string();
+            
+            // Check if this is a partition node (node name is "partition")
+            if node_name == "partition" {
+                // The partition name is the first positional argument (e.g., partition "GW_Routing")
+                let partition_name = child.entries().iter()
+                    .find(|e| e.name().is_none()) // positional argument has no name
+                    .and_then(|e| e.value().as_string())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "unnamed".to_string());
+                
+                // Extract swcs inside the partition
+                let swc_children = extract_swcs(child);
+                
+                children.push(NodeChild {
+                    name: partition_name,
+                    kind: "partition".to_string(),
+                    children: swc_children,
+                });
+            }
+        }
+    }
+    
+    children
+}
+
+/// Extract SWC children from a partition node
+fn extract_swcs(partition_node: &kdl::KdlNode) -> Vec<NodeChild> {
+    let mut swcs = Vec::new();
+    
+    if let Some(kdl_children) = partition_node.children() {
+        for child in kdl_children.nodes() {
+            let node_name = child.name().to_string();
+            
+            // Check if this is an swc node (node name is "swc")
+            if node_name == "swc" {
+                // The swc name is the first positional argument (e.g., swc "CanRouter")
+                let swc_name = child.entries().iter()
+                    .find(|e| e.name().is_none()) // positional argument has no name
+                    .and_then(|e| e.value().as_string())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "unnamed".to_string());
+                
+                swcs.push(NodeChild {
+                    name: swc_name,
+                    kind: "swc".to_string(),
+                    children: Vec::new(),
+                });
+            }
+        }
+    }
+    
+    swcs
 }
 
 impl Example {

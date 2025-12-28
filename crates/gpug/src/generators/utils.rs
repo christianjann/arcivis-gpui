@@ -50,6 +50,9 @@ pub fn generate_nodes(n: usize) -> Vec<GpugNode> {
             selected: false,
             container_offset: point(px(0.0), px(0.0)),
             width: 80.0,
+            height: 32.0,
+            node_type: "node".to_string(),
+            children: Vec::new(),
         });
     }
     nodes

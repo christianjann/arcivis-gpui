@@ -4,6 +4,7 @@ pub use crate::generators::watts_strogatz::generate_watts_strogatz_graph;
 pub use crate::graph::EdgeRouting;
 pub use crate::graph::Graph;
 pub use crate::node::GpugNode;
+pub use crate::node::NodeChild;
 pub mod edge;
 pub mod generators;
 pub mod graph;

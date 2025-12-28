@@ -644,17 +644,17 @@ impl Render for Graph {
                         e.position.y - this.container_offset.y,
                     );
                     let mut hit_index: Option<usize> = None;
-                    // Node height for hit testing (width is per-node)
-                    let node_height = px(32.0) * this.zoom;
+                    // Check each node using its actual width and height
                     for (i, n) in this.nodes.iter().enumerate() {
-                        let (nx, ny, node_width) = cx.read_entity(n, |node, _| (node.x, node.y, node.width));
+                        let (nx, ny, node_width, node_height) = cx.read_entity(n, |node, _| (node.x, node.y, node.width, node.height));
                         let left = this.pan.x + nx * this.zoom;
                         let top = this.pan.y + ny * this.zoom;
                         let scaled_width = px(node_width) * this.zoom;
+                        let scaled_height = px(node_height) * this.zoom;
                         if cursor.x >= left
                             && cursor.x <= left + scaled_width
                             && cursor.y >= top
-                            && cursor.y <= top + node_height
+                            && cursor.y <= top + scaled_height
                         {
                             hit_index = Some(i);
                             break;
