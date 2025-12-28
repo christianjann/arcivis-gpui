@@ -49,6 +49,7 @@ pub fn generate_nodes(n: usize) -> Vec<GpugNode> {
             pan: point(px(0.0), px(0.0)),
             selected: false,
             container_offset: point(px(0.0), px(0.0)),
+            width: 80.0,
         });
     }
     nodes

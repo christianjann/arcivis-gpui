@@ -8,6 +8,7 @@ use gpui_component::{
 use gpui_component_assets::Assets;
 use gpui_component_story::Open;
 use gpug::{EdgeRouting, Graph, GpugEdge, GpugNode};
+use tracing::error;
 use std::collections::HashMap;
 
 pub struct Example {
@@ -79,6 +80,7 @@ fn parse_kdl_model(content: &str) -> (Vec<GpugNode>, Vec<GpugEdge>) {
                 pan: point(px(0.0), px(0.0)),
                 selected: false,
                 container_offset: point(px(0.0), px(0.0)),
+                width: 80.0, // Default width, will be updated after first render
             });
             
             id += 1;
@@ -162,9 +164,14 @@ impl Example {
             if let InputEvent::Change = event {
                 let content = input.read(cx).value();
                 let (nodes, edges) = parse_kdl_model(&content);
-                graph_for_sub.update(cx, |graph, cx| {
-                    graph.update_model(nodes, edges, cx);
-                });
+                // Only update if we have valid nodes (KDL parsed successfully with content)
+                if !nodes.is_empty() {
+                    graph_for_sub.update(cx, |graph, cx| {
+                        graph.update_model(nodes, edges, cx);
+                    });
+                } else {
+                    error!("Document has errors, not updating graph!")
+                }
             }
         })];
 

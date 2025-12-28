@@ -260,8 +260,7 @@ impl Render for Graph {
                 // Use bounds.origin to offset painting to the container's position
                 let offset = bounds.origin;
                 let thickness = (1.0f32 * zoom).max(1.0);
-                // Node dimensions for edge connections
-                let node_width = 80.0;
+                // Node height for edge connections (width is per-node)
                 let node_height = 32.0;
                 
                 // Port colors for highlighted edges
@@ -313,7 +312,7 @@ impl Render for Graph {
                     }
                     // Connect from source's right port to target's left port
                     let (x1, y1, source_selected) = cx.read_entity(&nodes[i], |n, _| (
-                        n.x + px(node_width), // Right edge of source node
+                        n.x + px(n.width), // Right edge of source node (using actual width)
                         n.y + px(node_height / 2.0), // Vertically centered
                         n.selected
                     ));
@@ -645,15 +644,15 @@ impl Render for Graph {
                         e.position.y - this.container_offset.y,
                     );
                     let mut hit_index: Option<usize> = None;
-                    // Node dimensions for hit testing
-                    let node_width = px(80.0) * this.zoom;
+                    // Node height for hit testing (width is per-node)
                     let node_height = px(32.0) * this.zoom;
                     for (i, n) in this.nodes.iter().enumerate() {
-                        let (nx, ny) = cx.read_entity(n, |node, _| (node.x, node.y));
+                        let (nx, ny, node_width) = cx.read_entity(n, |node, _| (node.x, node.y, node.width));
                         let left = this.pan.x + nx * this.zoom;
                         let top = this.pan.y + ny * this.zoom;
+                        let scaled_width = px(node_width) * this.zoom;
                         if cursor.x >= left
-                            && cursor.x <= left + node_width
+                            && cursor.x <= left + scaled_width
                             && cursor.y >= top
                             && cursor.y <= top + node_height
                         {

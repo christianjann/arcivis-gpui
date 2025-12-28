@@ -15,12 +15,14 @@ pub struct GpugNode {
     pub selected: bool,
     // Container offset in window coordinates (set by Graph during render)
     pub container_offset: Point<Pixels>,
+    // Actual node width (calculated based on text content)
+    pub width: f32,
 }
 
 impl Render for GpugNode {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let base_width = 80.0;
-        let base_height = 32.0;
+        let base_width = 80.0f32;
+        let base_height = 32.0f32;
         let port_size = base_height / 10.0 * 3.0; // Port is about 1/10th of node, but visible
         
         // Get theme colors
@@ -29,7 +31,7 @@ impl Render for GpugNode {
         let bg_color = cx.theme().secondary;
         let selected_border = cx.theme().ring;
         
-        // Left port (incoming) - positioned as sibling after node so it renders on top
+        // Left port (incoming) - positioned relative to left edge
         let left_port = div()
             .absolute()
             .left(px(-port_size / 2.0 * self.zoom))
@@ -40,7 +42,7 @@ impl Render for GpugNode {
             .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
-        // Right port (outgoing) - positioned relative to right edge so it stays at node edge
+        // Right port (outgoing) - positioned relative to right edge
         let right_port = div()
             .absolute()
             .right(px(-port_size / 2.0 * self.zoom))
@@ -51,9 +53,19 @@ impl Render for GpugNode {
             .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
-        // Node body (not absolute - determines container size)
+        // Calculate width based on text: approximate 7.2px per character at 12px font size + padding
+        let char_width = 7.2f32;
+        let padding = 24.0f32; // 12px padding on each side
+        let text_based_width = self.name.len() as f32 * char_width + padding;
+        let node_width = text_based_width.max(base_width);
+        
+        // Update stored width for edge routing
+        self.width = node_width;
+        
+        // Node body with explicit width for proper hit testing
         let node_body = div()
-            .min_w(px(base_width * self.zoom))
+            .id(("node", self.id as usize))
+            .w(px(node_width * self.zoom))
             .h(px(base_height * self.zoom))
             .px(px(12.0 * self.zoom))
             .bg(bg_color)
@@ -66,27 +78,19 @@ impl Render for GpugNode {
             .justify_center()
             .text_color(text_color)
             .text_size(px(12.0 * self.zoom))
-            .child(self.name.clone());
-
-        // Container for node + ports with interaction handlers
-        let node_container = div()
-            .relative()
             .cursor_move()
-            // Node body first (determines container size), then ports on top
-            .child(node_body)
-            .child(left_port)
-            .child(right_port)
-            .id(("node", self.id as usize))
-            // Start a drag with this node's id as payload; lets listeners filter events
+            .child(self.name.clone())
+            // Start a drag with this node's id as payload
             .on_drag(self.id, |_id: &u64, _offset, _window, cx| {
                 cx.new(|_| DragPreview)
             })
-            // Update position while dragging only if this node is the dragged one
+            // Update position while dragging
             .on_drag_move::<u64>(
-                cx.listener(|this, event: &DragMoveEvent<u64>, _window, cx| {
-                    if *event.drag(cx) != this.id {
+                cx.listener(|this, event: &DragMoveEvent<u64>, _window, _cx| {
+                    if *event.drag(_cx) != this.id {
                         return;
                     }
+                    
                     // Record the initial cursor offset inside the node on first move
                     if this.drag_offset.is_none() {
                         let offset = point(
@@ -104,7 +108,6 @@ impl Render for GpugNode {
                         );
                         this.x = new_origin.x;
                         this.y = new_origin.y;
-                        // position changes trigger re-render
                     }
                 }),
             )
@@ -114,12 +117,19 @@ impl Render for GpugNode {
                 }
             }));
 
+        // Wrapper to position ports relative to node_body
+        let node_wrapper = div()
+            .relative()
+            .child(node_body)
+            .child(left_port)
+            .child(right_port);
+
         // Position the node with absolute positioning
         div()
             .absolute()
             .left(self.pan.x + self.x * self.zoom)
             .top(self.pan.y + self.y * self.zoom)
-            .child(node_container)
+            .child(node_wrapper)
     }
 }
 
