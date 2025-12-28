@@ -304,6 +304,8 @@ impl Example {
             graph.edge_routing = EdgeRouting::Manhattan;
             // Trigger layout since we're providing positioned nodes
             graph.needs_layout = node_count == 0;
+            // Fit to window on initial render
+            graph.needs_fit_to_content = true;
             graph
         });
 
@@ -410,6 +412,11 @@ fn main() {
         gpui_component_story::init(cx);
         cx.activate(true);
 
-        gpui_component_story::create_new_window("KDL Model Editor", Example::view, cx);
+        gpui_component_story::create_new_window_with_size(
+            "GPUI Architecture Visualizer",
+            Some(size(px(1200.0), px(800.0))),
+            Example::view,
+            cx,
+        );
     });
 }

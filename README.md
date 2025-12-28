@@ -1,4 +1,4 @@
-# SysML Viewer Demo
+# GPUI Architecture Visualizer Demo
 
 A demo application for experimenting with [GPUI](https://gpui.rs/) and layouting vehicle E/E architecture diagrams.
 

@@ -38,6 +38,7 @@ pub struct Graph {
     pub container_offset: Point<Pixels>,
     pub container_size: Size<Pixels>,
     pub needs_layout: bool,
+    pub needs_fit_to_content: bool,
     // For panning with mouse drag
     pub is_panning: bool,
     pub pan_start: Point<Pixels>,
@@ -78,6 +79,7 @@ impl Graph {
             container_offset: point(px(0.0), px(0.0)),
             container_size: size(px(0.0), px(0.0)),
             needs_layout: true,
+            needs_fit_to_content: false,
             is_panning: false,
             pan_start: point(px(0.0), px(0.0)),
             pan_start_pos: point(px(0.0), px(0.0)),
@@ -395,6 +397,8 @@ impl Render for Graph {
                         graph.container_size = size;
                         // Layout nodes to fit the new container size
                         graph.layout_nodes(cx);
+                        // Fit to content on resize/maximize
+                        graph.fit_to_content(cx);
                     }
                 });
             },
