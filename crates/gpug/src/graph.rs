@@ -355,18 +355,19 @@ impl Render for Graph {
                 let mut fy = vec![0.0f32; n];
 
                 // Force parameters (tune for stability/perf)
-                let repulsion = 120.0f32; // lower repulsion reduces oscillation
-                let attraction = 0.03f32; // stronger springs for faster settling
-                let gravity = 0.006f32; // pull toward center
+                // Increased repulsion for larger rectangular nodes (80x32)
+                let repulsion = 800.0f32; // higher repulsion for more spacing
+                let attraction = 0.02f32; // slightly weaker springs
+                let gravity = 0.004f32; // pull toward center
                 let damping = 0.85f32; // velocity damping
                 let dt = 0.5f32; // larger step, clamped below
-                let max_disp = 5.0f32; // cap displacement per step
-                let center_x = 800.0f32;
-                let center_y = 200.0f32;
+                let max_disp = 8.0f32; // allow more movement per step
+                let center_x = 400.0f32;
+                let center_y = 300.0f32;
 
                 // Spatial grid for approximate repulsion
                 use std::collections::HashMap;
-                let cell = 100.0f32;
+                let cell = 150.0f32; // larger cell size for bigger nodes
                 let mut bins: HashMap<(i32, i32), Vec<usize>> = HashMap::with_capacity(n * 2);
                 for i in 0..n {
                     let gx = (xs[i] / cell).floor() as i32;
