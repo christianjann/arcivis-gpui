@@ -894,6 +894,7 @@ impl Render for Graph {
 
         div()
             .size_full()
+            .cursor(gpui::CursorStyle::Arrow)
             // Background is transparent so parent can set the themed background
             .child(sim_canvas)
             // Clicking selects node under cursor; shift adds to selection; clicking empty space starts panning
@@ -905,6 +906,19 @@ impl Render for Graph {
                         e.position.x - this.container_offset.x,
                         e.position.y - this.container_offset.y,
                     );
+                    
+                    // Ignore clicks in UI control regions (top-left controls panel, top-right play button)
+                    // Controls panel: top-left, approximately 280x50 area
+                    // Play button: top-right, approximately 40x40 area
+                    let container_width = this.container_size.width;
+                    let in_controls_panel = cursor.x < px(290.0) && cursor.y < px(60.0);
+                    let in_play_button = cursor.x > container_width - px(50.0) && cursor.y < px(50.0);
+                    
+                    if in_controls_panel || in_play_button {
+                        // Don't start panning or selecting when clicking on UI controls
+                        return;
+                    }
+                    
                     let mut hit_index: Option<usize> = None;
                     // Check each node using its actual width and height
                     for (i, n) in this.nodes.iter().enumerate() {
@@ -1011,6 +1025,13 @@ impl Render for Graph {
                 }),
             )
             .on_mouse_move(graph_cx.listener(|this, e: &gpui::MouseMoveEvent, _w, cx| {
+                // Stop panning if left mouse button is no longer pressed
+                if this.is_panning && !e.pressed_button.is_some_and(|b| b == gpui::MouseButton::Left || b == gpui::MouseButton::Middle) {
+                    this.is_panning = false;
+                    cx.notify();
+                    return;
+                }
+                
                 if this.is_panning {
                     let current_pos = point(
                         e.position.x - this.container_offset.x,
