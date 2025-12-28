@@ -117,6 +117,7 @@ impl Render for Example {
                                 .w_full()
                                 .h_full()
                                 .overflow_hidden()
+                                .bg(cx.theme().background)
                                 .child(self.graph.clone()),
                         ),
                     ),

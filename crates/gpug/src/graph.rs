@@ -1,5 +1,7 @@
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use gpui::{canvas, div, Context, IntoElement, ParentElement, Render, Styled, Window};
+use gpui_component::ActiveTheme;
 
 use crate::edge::GpugEdge;
 use crate::generators::watts_strogatz::generate_watts_strogatz_graph;
@@ -174,17 +176,16 @@ impl Graph {
     }
 }
 
-fn parameter_button<F>(label: &str, cx: &mut Context<Graph>, on_press: F) -> Div
+fn parameter_button<F>(label: &str, text_color: Hsla, border_color: Hsla, cx: &mut Context<Graph>, on_press: F) -> Div
 where
     F: Fn(&mut Graph, &mut Context<Graph>) + 'static,
 {
     div()
         .child(label.to_string())
         .p(px(4.0))
-        .bg(rgb(0xf0f0f0))
-        .text_color(rgb(0x000000))
+        .text_color(text_color)
         .border(px(1.0))
-        .border_color(rgb(0xcccccc))
+        .border_color(border_color)
         .rounded(px(4.0))
         .cursor_pointer()
         .on_mouse_down(
@@ -327,18 +328,22 @@ impl Render for Graph {
             .children(self.nodes.iter().cloned());
 
         let max_k = self.max_k();
+        // Get theme colors for controls
+        let text_color = graph_cx.theme().foreground;
+        let border_color = graph_cx.theme().border;
+        
         let controls_panel = {
-            let decrease_k = parameter_button("-", graph_cx, |this, cx| {
+            let decrease_k = parameter_button("-", text_color, border_color, graph_cx, |this, cx| {
                 this.adjust_k(-1, cx);
             });
-            let increase_k = parameter_button("+", graph_cx, |this, cx| {
+            let increase_k = parameter_button("+", text_color, border_color, graph_cx, |this, cx| {
                 this.adjust_k(1, cx);
             });
             let beta_step = 0.05f32;
-            let decrease_beta = parameter_button("-", graph_cx, move |this, cx| {
+            let decrease_beta = parameter_button("-", text_color, border_color, graph_cx, move |this, cx| {
                 this.adjust_beta(-beta_step, cx);
             });
-            let increase_beta = parameter_button("+", graph_cx, move |this, cx| {
+            let increase_beta = parameter_button("+", text_color, border_color, graph_cx, move |this, cx| {
                 this.adjust_beta(beta_step, cx);
             });
 
@@ -346,10 +351,9 @@ impl Render for Graph {
                 .absolute()
                 .top(px(8.0))
                 .left(px(8.0))
-                .bg(rgb(0xf7f7f7))
-                .text_color(rgb(0x000000))
+                .text_color(text_color)
                 .border(px(1.0))
-                .border_color(rgb(0xcccccc))
+                .border_color(border_color)
                 .rounded(px(6.0))
                 .p(px(8.0))
                 .flex()
@@ -525,13 +529,9 @@ impl Render for Graph {
             .right(px(8.0))
             .size(px(28.0))
             .rounded_full()
-            .bg(if self.playing {
-                rgb(0x4CAF50)
-            } else {
-                rgb(0xeeeeee)
-            })
+            .when(self.playing, |this| this.bg(rgb(0x4CAF50)))
             .border(px(1.0))
-            .border_color(rgb(0xcccccc))
+            .border_color(border_color)
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 graph_cx.listener({
@@ -544,7 +544,7 @@ impl Render for Graph {
 
         div()
             .size_full()
-            .bg(rgb(0xffffff))
+            // Background is transparent so parent can set the themed background
             .child(sim_canvas)
             // Clicking selects node under cursor; shift adds to selection; clicking empty space starts panning
             .on_mouse_down(

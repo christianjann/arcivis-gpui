@@ -1,5 +1,6 @@
 use gpui::div;
 use gpui::*;
+use gpui_component::ActiveTheme;
 
 // Simple draggable node with label
 pub struct GpugNode {
@@ -22,6 +23,12 @@ impl Render for GpugNode {
         let base_height = 32.0;
         let port_size = base_height / 10.0 * 3.0; // Port is about 1/10th of node, but visible
         
+        // Get theme colors
+        let text_color = cx.theme().foreground;
+        let border_color = cx.theme().border;
+        let bg_color = cx.theme().secondary;
+        let selected_border = cx.theme().ring;
+        
         // Left port (incoming)
         let left_port = div()
             .absolute()
@@ -30,7 +37,7 @@ impl Render for GpugNode {
             .size(px(port_size * self.zoom))
             .bg(rgb(0x4488ff))
             .border(px(1.0))
-            .border_color(rgb(0x333333))
+            .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
         // Right port (outgoing)
@@ -41,7 +48,7 @@ impl Render for GpugNode {
             .size(px(port_size * self.zoom))
             .bg(rgb(0xff8844))
             .border(px(1.0))
-            .border_color(rgb(0x333333))
+            .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
         let node = div()
@@ -49,16 +56,16 @@ impl Render for GpugNode {
             .min_w(px(base_width * self.zoom))
             .h(px(base_height * self.zoom))
             .px(px(12.0 * self.zoom)) // More padding for ports
-            .bg(rgb(0xffffff))
+            .bg(bg_color)
             .border(px(2.0))
-            .border_color(if self.selected { rgb(0x1E90FF) } else { rgb(0x333333) })
+            .border_color(if self.selected { selected_border } else { border_color })
             .rounded(px(4.0 * self.zoom))
             .shadow_sm()
             .cursor_move()
             .flex()
             .items_center()
             .justify_center()
-            .text_color(rgb(0x000000))
+            .text_color(text_color)
             .text_size(px(12.0 * self.zoom))
             .child(left_port)
             .child(self.name.clone())

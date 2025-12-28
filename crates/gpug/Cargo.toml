@@ -21,6 +21,7 @@ doctest = false
 
 [dependencies]
 gpui.workspace = true
+gpui-component.workspace = true
 
 [[example]]
 name = "kitchen_sink"
