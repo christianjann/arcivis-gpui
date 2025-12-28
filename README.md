@@ -2,7 +2,7 @@
 
 A demo application for experimenting with [GPUI](https://gpui.rs/) and layouting vehicle E/E architecture diagrams.
 
-![Demo Screenshot](docs/screenshot.png)
+![Demo Screenshot](doc/screenshot.png)
 
 ## About
 
@@ -45,8 +45,8 @@ This is an experimental project to explore:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/sysml-viewer
-cd sysml-viewer
+git clone https://github.com/christianjann/gpui-archviz
+cd gpui-archviz
 
 # Build and run
 cargo run

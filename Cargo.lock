@@ -2777,6 +2777,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpui-archviz"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "autocorrect",
+ "chrono",
+ "color-lsp",
+ "fake",
+ "gpui",
+ "gpui-component",
+ "gpui-component-assets",
+ "gpui-component-story",
+ "graphview",
+ "gtk",
+ "itertools 0.14.0",
+ "kdl",
+ "lsp-types 0.97.0",
+ "rand 0.9.2",
+ "regex",
+ "reqwest_client",
+ "rust-i18n",
+ "serde",
+ "serde_json",
+ "smol",
+ "tracing",
+ "tracing-subscriber",
+ "tree-sitter-navi",
+ "unindent",
+]
+
+[[package]]
 name = "gpui-component"
 version = "0.5.0"
 dependencies = [
@@ -7070,37 +7101,6 @@ dependencies = [
  "ntapi",
  "rayon",
  "windows 0.57.0",
-]
-
-[[package]]
-name = "sysml-viewer"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "autocorrect",
- "chrono",
- "color-lsp",
- "fake",
- "gpui",
- "gpui-component",
- "gpui-component-assets",
- "gpui-component-story",
- "graphview",
- "gtk",
- "itertools 0.14.0",
- "kdl",
- "lsp-types 0.97.0",
- "rand 0.9.2",
- "regex",
- "reqwest_client",
- "rust-i18n",
- "serde",
- "serde_json",
- "smol",
- "tracing",
- "tracing-subscriber",
- "tree-sitter-navi",
- "unindent",
 ]
 
 [[package]]

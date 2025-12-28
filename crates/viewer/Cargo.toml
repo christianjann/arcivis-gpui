@@ -1,5 +1,5 @@
 [package]
-name = "sysml-viewer"
+name = "gpui-archviz"
 version = "0.0.1"
 publish = false
 edition.workspace = true
