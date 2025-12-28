@@ -1,0 +1,33 @@
+// Vehicle Model Definition in KDL
+
+Vehicle type="class" {
+  mass type="Real"
+  maxSpeed type="Real"
+  engine type="Engine"
+  wheels type="Wheel" multiplicity=4
+  transmission type="Transmission"
+}
+
+Engine type="class" {
+  horsepower type="Real"
+  displacement type="Real"
+}
+
+Wheel type="class" {
+  diameter type="Real"
+  type type="String"
+}
+
+Transmission type="class" {
+  gears type="Integer"
+  type type="String"
+}
+
+Car type="class" inherits="Vehicle" {
+  numDoors type="Integer" default=4
+}
+
+Truck type="class" inherits="Vehicle" {
+  bedLength type="Real"
+  cargoCapacity type="Real"
+}

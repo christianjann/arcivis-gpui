@@ -1,43 +1,51 @@
 use gpui::{prelude::FluentBuilder as _, *};
 use gpui_component::{
-    ActiveTheme as _, IconName, Sizable as _,
-    button::{Button, ButtonVariants as _},
-    clipboard::Clipboard,
-    h_flex,
+    ActiveTheme,
     highlighter::Language,
     input::{Input, InputEvent, InputState, TabSize},
     resizable::{h_resizable, resizable_panel},
-    text::TextView,
 };
 use gpui_component_assets::Assets;
 use gpui_component_story::Open;
+use gpug::{generate_nodes, generate_watts_strogatz_graph, Graph};
 
 pub struct Example {
     input_state: Entity<InputState>,
+    graph: Entity<Graph>,
     _subscriptions: Vec<Subscription>,
 }
 
-const EXAMPLE: &str = include_str!("../tests/model/test.md");
+const EXAMPLE: &str = include_str!("../tests/model/vehicle.kdl");
 
 impl Example {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input_state = cx.new(|cx| {
             InputState::new(window, cx)
-                .code_editor(Language::Markdown)
+                .code_editor(Language::Kdl)
                 .line_number(true)
                 .tab_size(TabSize {
                     tab_size: 2,
                     ..Default::default()
                 })
                 .searchable(true)
-                .placeholder("Enter your Markdown here...")
+                .placeholder("Enter your KDL diagram here...")
                 .default_value(EXAMPLE)
+        });
+
+        let graph = cx.new(|cx| {
+            let node_count = 50;
+            let initial_k = 3;
+            let initial_beta = 0.05;
+            let nodes = generate_nodes(node_count);
+            let edges = generate_watts_strogatz_graph(node_count, initial_k, initial_beta);
+            Graph::new(cx, nodes, edges, initial_k, initial_beta)
         });
 
         let _subscriptions = vec![cx.subscribe(&input_state, |_, _, _: &InputEvent, _| {})];
 
         Self {
             input_state,
+            graph,
             _subscriptions,
         }
     }
@@ -47,7 +55,7 @@ impl Example {
             files: true,
             directories: true,
             multiple: false,
-            prompt: Some("Select a Markdown file".into()),
+            prompt: Some("Select a KDL file".into()),
         });
 
         let input_state = self.input_state.clone();
@@ -75,7 +83,7 @@ impl Example {
 }
 
 impl Render for Example {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("editor")
             .size_full()
@@ -100,40 +108,13 @@ impl Render for Example {
                     )
                     .child(
                         resizable_panel().child(
-                            TextView::markdown(
-                                "preview",
-                                self.input_state.read(cx).value().clone(),
-                                window,
-                                cx,
-                            )
-                            .code_block_actions(|code_block, _window, _cx| {
-                                let code = code_block.code();
-                                let lang = code_block.lang();
-
-                                h_flex()
-                                    .gap_1()
-                                    .child(Clipboard::new("copy").value(code.clone()))
-                                    .when_some(lang, |this, lang| {
-                                        // Only show run terminal button for certain languages
-                                        if lang.as_ref() == "rust" || lang.as_ref() == "python" {
-                                            this.child(
-                                                Button::new("run-terminal")
-                                                    .icon(IconName::SquareTerminal)
-                                                    .ghost()
-                                                    .xsmall()
-                                                    .on_click(move |_, _, _cx| {
-                                                        println!("Running {} code: {}", lang, code);
-                                                    }),
-                                            )
-                                        } else {
-                                            this
-                                        }
-                                    })
-                            })
-                            .flex_none()
-                            .p_5()
-                            .scrollable(true)
-                            .selectable(true),
+                            div()
+                                .id("graph-preview")
+                                .relative()
+                                .w_full()
+                                .h_full()
+                                .overflow_hidden()
+                                .child(self.graph.clone()),
                         ),
                     ),
             )
@@ -147,6 +128,6 @@ fn main() {
         gpui_component_story::init(cx);
         cx.activate(true);
 
-        gpui_component_story::create_new_window("Markdown Editor", Example::view, cx);
+        gpui_component_story::create_new_window("KDL Model Editor", Example::view, cx);
     });
 }
