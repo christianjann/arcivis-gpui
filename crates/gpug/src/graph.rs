@@ -388,12 +388,28 @@ impl Render for Graph {
                             draw_segment(path, p1, p2, half_thickness);
                         }
                         EdgeRouting::Manhattan => {
-                            let mid_x = (p1.x + p2.x) / 2.0;
-                            let corner1 = point(mid_x, p1.y);
-                            let corner2 = point(mid_x, p2.y);
-                            draw_segment(path, p1, corner1, half_thickness);
-                            draw_segment(path, corner1, corner2, half_thickness);
-                            draw_segment(path, corner2, p2, half_thickness);
+                            // Route edges above nodes: right → up → horizontal → down → left
+                            let clearance = px(30.0) * zoom; // Vertical clearance above nodes
+                            let stub_len = px(15.0) * zoom;  // Horizontal stub from port
+                            
+                            // Stub out from source port (right)
+                            let s1 = point(p1.x + stub_len, p1.y);
+                            // Stub in to target port (left)
+                            let s2 = point(p2.x - stub_len, p2.y);
+                            
+                            // Route above - find the minimum y and go above it
+                            let min_y = p1.y.min(p2.y);
+                            let route_y = min_y - clearance;
+                            
+                            // 5 segments: stub right, up, horizontal, down, stub left
+                            let c1 = point(s1.x, route_y);  // Up from source stub
+                            let c2 = point(s2.x, route_y);  // Horizontal to above target
+                            
+                            draw_segment(path, p1, s1, half_thickness);      // Stub right
+                            draw_segment(path, s1, c1, half_thickness);      // Up
+                            draw_segment(path, c1, c2, half_thickness);      // Horizontal (above)
+                            draw_segment(path, c2, s2, half_thickness);      // Down
+                            draw_segment(path, s2, p2, half_thickness);      // Stub left
                         }
                     }
                 };
