@@ -39,7 +39,7 @@ impl Example {
         // Parse the KDL content and create nodes/edges from ECUs and buses
         let (nodes, edges) = parse_kdl_model(EXAMPLE);
         let node_count = nodes.len();
-        
+
         let graph = cx.new(|_cx| {
             let mut graph = Graph::new(_cx, nodes, edges, 3, 0.05);
             // Use Manhattan-style edge routing
@@ -53,20 +53,23 @@ impl Example {
 
         // Subscribe to input changes and update the graph
         let graph_for_sub = graph.clone();
-        let _subscriptions = vec![cx.subscribe(&input_state, move |_this, input, event: &InputEvent, cx| {
-            if let InputEvent::Change = event {
-                let content = input.read(cx).value();
-                let (nodes, edges) = parse_kdl_model(&content);
-                // Only update if we have valid nodes (KDL parsed successfully with content)
-                if !nodes.is_empty() {
-                    graph_for_sub.update(cx, |graph, cx| {
-                        graph.update_model(nodes, edges, cx);
-                    });
-                } else {
-                    error!("Document has errors, not updating graph!")
-                }
-            }
-        })];
+        let _subscriptions =
+            vec![
+                cx.subscribe(&input_state, move |_this, input, event: &InputEvent, cx| {
+                    if let InputEvent::Change = event {
+                        let content = input.read(cx).value();
+                        let (nodes, edges) = parse_kdl_model(&content);
+                        // Only update if we have valid nodes (KDL parsed successfully with content)
+                        if !nodes.is_empty() {
+                            graph_for_sub.update(cx, |graph, cx| {
+                                graph.update_model(nodes, edges, cx);
+                            });
+                        } else {
+                            error!("Document has errors, not updating graph!")
+                        }
+                    }
+                }),
+            ];
 
         Self {
             input_state,

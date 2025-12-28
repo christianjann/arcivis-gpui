@@ -1,5 +1,5 @@
+use gpui::{App, Application, WindowOptions, div, *};
 use graphview::*;
-use gpui::{div, App, Application, WindowOptions, *};
 
 struct LayoutExample {
     graph: Entity<Graph>,
@@ -35,14 +35,9 @@ impl Render for LayoutExample {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child("Left Panel (Empty)")
+                    .child("Left Panel (Empty)"),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(self.graph.clone())
-            )
+            .child(div().flex_1().overflow_hidden().child(self.graph.clone()))
     }
 }
 
@@ -51,9 +46,7 @@ fn main() {
         let mut window_opts = WindowOptions::default();
         window_opts.app_id = Some("GPUG Kitchen Sink".to_string());
 
-        cx.open_window(window_opts, |_, cx| {
-            cx.new(|cx| LayoutExample::new(cx))
-        })
-        .unwrap();
+        cx.open_window(window_opts, |_, cx| cx.new(|cx| LayoutExample::new(cx)))
+            .unwrap();
     });
 }

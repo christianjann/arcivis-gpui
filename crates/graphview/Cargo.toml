@@ -26,7 +26,3 @@ petgraph = "0.8.3"
 [[example]]
 name = "kitchen_sink"
 path = "examples/kitchen_sink.rs"
-
-[[example]]
-name = "large_graph"
-path = "examples/large_graph.rs"

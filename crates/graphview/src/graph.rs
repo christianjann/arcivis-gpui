@@ -1,6 +1,6 @@
-use gpui::*;
 use gpui::prelude::FluentBuilder;
-use gpui::{canvas, div, Context, IntoElement, ParentElement, Render, Styled, Window};
+use gpui::*;
+use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, canvas, div};
 use gpui_component::ActiveTheme;
 
 use crate::edge::GraphEdge;
@@ -90,7 +90,10 @@ impl Graph {
 
     /// Relayout nodes to fit within the container bounds
     fn layout_nodes(&mut self, cx: &mut Context<Self>) {
-        if !self.needs_layout || self.container_size.width <= px(0.0) || self.container_size.height <= px(0.0) {
+        if !self.needs_layout
+            || self.container_size.width <= px(0.0)
+            || self.container_size.height <= px(0.0)
+        {
             return;
         }
         self.needs_layout = false;
@@ -110,7 +113,9 @@ impl Graph {
         let mut max_y = f32::MIN;
 
         for node in &self.nodes {
-            let (x, y) = cx.read_entity(node, |n, _| ((n.x / px(1.0)) as f32, (n.y / px(1.0)) as f32));
+            let (x, y) = cx.read_entity(node, |n, _| {
+                ((n.x / px(1.0)) as f32, (n.y / px(1.0)) as f32)
+            });
             min_x = min_x.min(x);
             max_x = max_x.max(x);
             min_y = min_y.min(y);
@@ -148,7 +153,12 @@ impl Graph {
     }
 
     /// Update the graph with new nodes and edges
-    pub fn update_model(&mut self, nodes: Vec<GraphNode>, edges: Vec<GraphEdge>, cx: &mut Context<Self>) {
+    pub fn update_model(
+        &mut self,
+        nodes: Vec<GraphNode>,
+        edges: Vec<GraphEdge>,
+        cx: &mut Context<Self>,
+    ) {
         // Create new node entities
         let mut node_entities: Vec<Entity<GraphNode>> = Vec::with_capacity(nodes.len());
         for mut node in nodes {
@@ -157,13 +167,13 @@ impl Graph {
             node.container_offset = self.container_offset;
             node_entities.push(cx.new(|_| node));
         }
-        
+
         self.nodes = node_entities;
         self.edges = edges;
         self.needs_layout = true;
         cx.notify();
     }
-    
+
     /// Set zoom level and update all nodes
     pub fn set_zoom(&mut self, new_zoom: f32, cx: &mut Context<Self>) {
         let new_zoom = new_zoom.clamp(0.1, 3.0);
@@ -179,19 +189,19 @@ impl Graph {
         }
         cx.notify();
     }
-    
+
     /// Fit all nodes into the visible area
     pub fn fit_to_content(&mut self, cx: &mut Context<Self>) {
         if self.nodes.is_empty() || self.container_size.width <= px(0.0) {
             return;
         }
-        
+
         // Find bounding box of all nodes
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
         let mut max_x = f32::MIN;
         let mut max_y = f32::MIN;
-        
+
         for n in &self.nodes {
             let (x, y, w, h) = cx.read_entity(n, |node, _| {
                 let (w, h) = node.estimate_dimensions();
@@ -202,23 +212,23 @@ impl Graph {
             max_x = max_x.max(x + w);
             max_y = max_y.max(y + h);
         }
-        
+
         let content_width = max_x - min_x;
         let content_height = max_y - min_y;
-        
+
         if content_width <= 0.0 || content_height <= 0.0 {
             return;
         }
-        
+
         // Calculate zoom to fit with some padding
         let padding = 40.0;
         let available_width = (self.container_size.width / px(1.0)) as f32 - padding * 2.0;
         let available_height = (self.container_size.height / px(1.0)) as f32 - padding * 2.0;
-        
+
         let zoom_x = available_width / content_width;
         let zoom_y = available_height / content_height;
         let new_zoom = zoom_x.min(zoom_y).clamp(0.1, 2.0);
-        
+
         // Center the content
         let center_x = (min_x + max_x) / 2.0;
         let center_y = (min_y + max_y) / 2.0;
@@ -226,10 +236,10 @@ impl Graph {
         let container_height = (self.container_size.height / px(1.0)) as f32;
         let pan_x = container_width / 2.0 - center_x * new_zoom;
         let pan_y = container_height / 2.0 - center_y * new_zoom;
-        
+
         self.zoom = new_zoom;
         self.pan = point(px(pan_x), px(pan_y));
-        
+
         // Update all nodes
         let zoom = self.zoom;
         let pan = self.pan;
@@ -241,17 +251,17 @@ impl Graph {
         }
         cx.notify();
     }
-    
+
     /// Apply dagre hierarchical layout to nodes
     pub fn apply_dagre_layout(&mut self, cx: &mut Context<Self>) {
         use dagre_rs::{DagreLayout, LayoutOptions, RankDir};
         use petgraph::Graph as PetGraph;
-        
+
         let n = self.nodes.len();
         if n == 0 {
             return;
         }
-        
+
         // Get node dimensions for spacing calculation
         let mut max_width = 0.0f32;
         let mut max_height = 0.0f32;
@@ -260,23 +270,23 @@ impl Graph {
             max_width = max_width.max(w);
             max_height = max_height.max(h);
         }
-        
+
         // Build petgraph from our graph structure
         let mut pg: PetGraph<usize, ()> = PetGraph::new();
         let mut node_indices = Vec::with_capacity(n);
-        
+
         // Add nodes
         for i in 0..n {
             node_indices.push(pg.add_node(i));
         }
-        
+
         // Add edges
         for edge in &self.edges {
             if edge.source < n && edge.target < n {
                 pg.add_edge(node_indices[edge.source], node_indices[edge.target], ());
             }
         }
-        
+
         // Configure dagre layout with spacing based on actual node sizes
         let options = LayoutOptions {
             rank_dir: RankDir::TopToBottom, // Top to Bottom
@@ -284,17 +294,17 @@ impl Graph {
             rank_sep: max_height + 50.0,    // Vertical separation = max node height + gap
             ..Default::default()
         };
-        
+
         let layout = DagreLayout::with_options(options);
         let result = layout.compute(&pg);
-        
+
         // Check if we got valid positions
         if result.node_positions.is_empty() {
             // Dagre returned no positions - fall back to simple grid layout
             let cols = (n as f32).sqrt().ceil() as usize;
             let spacing_x = max_width + 50.0;
             let spacing_y = max_height + 50.0;
-            
+
             let zoom = self.zoom;
             let pan = self.pan;
             for (i, node_entity) in self.nodes.iter().enumerate() {
@@ -315,7 +325,7 @@ impl Graph {
             let mut min_x = f32::MAX;
             let mut min_y = f32::MAX;
             let mut positions: Vec<(f32, f32)> = Vec::with_capacity(n);
-            
+
             for (i, _node_entity) in self.nodes.iter().enumerate() {
                 if let Some(&(x, y)) = result.node_positions.get(&node_indices[i]) {
                     min_x = min_x.min(x);
@@ -325,11 +335,11 @@ impl Graph {
                     positions.push((0.0, 0.0));
                 }
             }
-            
+
             // Offset positions so minimum is at (50, 50)
             let offset_x = 50.0 - min_x;
             let offset_y = 50.0 - min_y;
-            
+
             let zoom = self.zoom;
             let pan = self.pan;
             for (i, node_entity) in self.nodes.iter().enumerate() {
@@ -344,12 +354,18 @@ impl Graph {
                 });
             }
         }
-        
+
         cx.notify();
     }
 }
 
-fn parameter_button<F>(label: &str, text_color: Hsla, border_color: Hsla, cx: &mut Context<Graph>, on_press: F) -> Div
+fn parameter_button<F>(
+    label: &str,
+    text_color: Hsla,
+    border_color: Hsla,
+    cx: &mut Context<Graph>,
+    on_press: F,
+) -> Div
 where
     F: Fn(&mut Graph, &mut Context<Graph>) + 'static,
 {
@@ -383,7 +399,7 @@ impl Render for Graph {
                 cx.update_entity(&graph_entity_for_offset, |graph, cx| {
                     let offset_changed = graph.container_offset != offset;
                     let size_changed = graph.container_size != size;
-                    
+
                     if offset_changed {
                         graph.container_offset = offset;
                         for node in &nodes_for_offset {
@@ -392,7 +408,7 @@ impl Render for Graph {
                             });
                         }
                     }
-                    
+
                     if size_changed {
                         graph.container_size = size;
                         // Layout nodes to fit the new container size
@@ -418,19 +434,22 @@ impl Render for Graph {
                 // Use bounds.origin to offset painting to the container's position
                 let offset = bounds.origin;
                 let thickness = (1.0f32 * zoom).max(1.0);
-                
+
                 // Port positioning constants (must match node.rs)
                 let header_height = 28.0f32;
                 // Port vertical center is at header_height / 2 from node top
                 let port_y_offset = header_height / 2.0;
-                
+
                 // Port colors for highlighted edges
                 let source_color = rgb(0xff8844); // Orange (outgoing port)
                 let target_color = rgb(0x4488ff); // Blue (incoming port)
                 let normal_color = rgb(0x323232);
-                
+
                 // Helper closure to draw a thick line segment to a path
-                let draw_segment = |path: &mut gpui::Path<Pixels>, p1: Point<Pixels>, p2: Point<Pixels>, half_thickness: f32| {
+                let draw_segment = |path: &mut gpui::Path<Pixels>,
+                                    p1: Point<Pixels>,
+                                    p2: Point<Pixels>,
+                                    half_thickness: f32| {
                     let dir = point(p2.x - p1.x, p2.y - p1.y);
                     let len = dir.magnitude() as f32;
                     if len <= 0.0001 {
@@ -447,24 +466,24 @@ impl Render for Graph {
                     path.push_triangle((p1a, p1b, p2a), st);
                     path.push_triangle((p2a, p1b, p2b), st);
                 };
-                
+
                 // Collect edge data with selection state
                 #[derive(Clone, Copy)]
                 enum EdgeSelection {
                     None,
-                    SourceSelected,  // Edge is outgoing from selected node (orange)
-                    TargetSelected,  // Edge is incoming to selected node (blue)
-                    BothSelected,    // Both nodes selected
+                    SourceSelected, // Edge is outgoing from selected node (orange)
+                    TargetSelected, // Edge is incoming to selected node (blue)
+                    BothSelected,   // Both nodes selected
                 }
-                
+
                 struct EdgeData {
                     p1: Point<Pixels>,
                     p2: Point<Pixels>,
                     selection: EdgeSelection,
                 }
-                
+
                 let mut edge_data: Vec<EdgeData> = Vec::with_capacity(edges.len());
-                
+
                 for edge in &edges {
                     let i = edge.source;
                     let j = edge.target;
@@ -475,37 +494,40 @@ impl Render for Graph {
                     // Right port center: node.x + node.width (port extends past node edge)
                     // Left port center: node.x (port extends before node edge)
                     // Vertical: port_y_offset from top of node
-                    let (x1, y1, source_selected) = cx.read_entity(&nodes[i], |n, _| (
-                        n.x + px(n.width), // Right port center x
-                        n.y + px(port_y_offset), // Port vertical center
-                        n.selected
-                    ));
-                    let (x2, y2, target_selected) = cx.read_entity(&nodes[j], |n, _| (
-                        n.x, // Left port center x
-                        n.y + px(port_y_offset), // Port vertical center
-                        n.selected
-                    ));
+                    let (x1, y1, source_selected) = cx.read_entity(&nodes[i], |n, _| {
+                        (
+                            n.x + px(n.width),       // Right port center x
+                            n.y + px(port_y_offset), // Port vertical center
+                            n.selected,
+                        )
+                    });
+                    let (x2, y2, target_selected) = cx.read_entity(&nodes[j], |n, _| {
+                        (
+                            n.x,                     // Left port center x
+                            n.y + px(port_y_offset), // Port vertical center
+                            n.selected,
+                        )
+                    });
 
                     // Offset by bounds.origin so edges are drawn relative to container
                     let p1 = point(offset.x + pan.x + x1 * zoom, offset.y + pan.y + y1 * zoom);
                     let p2 = point(offset.x + pan.x + x2 * zoom, offset.y + pan.y + y2 * zoom);
-                    
+
                     let selection = match (source_selected, target_selected) {
                         (true, true) => EdgeSelection::BothSelected,
-                        (true, false) => EdgeSelection::SourceSelected,  // Outgoing from selected
-                        (false, true) => EdgeSelection::TargetSelected,  // Incoming to selected
+                        (true, false) => EdgeSelection::SourceSelected, // Outgoing from selected
+                        (false, true) => EdgeSelection::TargetSelected, // Incoming to selected
                         (false, false) => EdgeSelection::None,
                     };
-                    
-                    edge_data.push(EdgeData {
-                        p1,
-                        p2,
-                        selection,
-                    });
+
+                    edge_data.push(EdgeData { p1, p2, selection });
                 }
-                
+
                 // Helper to draw edge segments based on routing
-                let draw_edge = |path: &mut gpui::Path<Pixels>, p1: Point<Pixels>, p2: Point<Pixels>, half_thickness: f32| {
+                let draw_edge = |path: &mut gpui::Path<Pixels>,
+                                 p1: Point<Pixels>,
+                                 p2: Point<Pixels>,
+                                 half_thickness: f32| {
                     match edge_routing {
                         EdgeRouting::Straight => {
                             draw_segment(path, p1, p2, half_thickness);
@@ -513,30 +535,30 @@ impl Render for Graph {
                         EdgeRouting::Manhattan => {
                             // Route edges above nodes: right → up → horizontal → down → left
                             let clearance = px(30.0) * zoom; // Vertical clearance above nodes
-                            let stub_len = px(15.0) * zoom;  // Horizontal stub from port
-                            
+                            let stub_len = px(15.0) * zoom; // Horizontal stub from port
+
                             // Stub out from source port (right)
                             let s1 = point(p1.x + stub_len, p1.y);
                             // Stub in to target port (left)
                             let s2 = point(p2.x - stub_len, p2.y);
-                            
+
                             // Route above - find the minimum y and go above it
                             let min_y = p1.y.min(p2.y);
                             let route_y = min_y - clearance;
-                            
+
                             // 5 segments: stub right, up, horizontal, down, stub left
-                            let c1 = point(s1.x, route_y);  // Up from source stub
-                            let c2 = point(s2.x, route_y);  // Horizontal to above target
-                            
-                            draw_segment(path, p1, s1, half_thickness);      // Stub right
-                            draw_segment(path, s1, c1, half_thickness);      // Up
-                            draw_segment(path, c1, c2, half_thickness);      // Horizontal (above)
-                            draw_segment(path, c2, s2, half_thickness);      // Down
-                            draw_segment(path, s2, p2, half_thickness);      // Stub left
+                            let c1 = point(s1.x, route_y); // Up from source stub
+                            let c2 = point(s2.x, route_y); // Horizontal to above target
+
+                            draw_segment(path, p1, s1, half_thickness); // Stub right
+                            draw_segment(path, s1, c1, half_thickness); // Up
+                            draw_segment(path, c1, c2, half_thickness); // Horizontal (above)
+                            draw_segment(path, c2, s2, half_thickness); // Down
+                            draw_segment(path, s2, p2, half_thickness); // Stub left
                         }
                     }
                 };
-                
+
                 // Draw glow for selected edges first (underneath)
                 // Orange glow for outgoing, blue glow for incoming
                 let mut outgoing_glow_path = gpui::Path::new(offset);
@@ -554,7 +576,7 @@ impl Render for Graph {
                 }
                 window.paint_path(outgoing_glow_path, rgba(0xff884460)); // Orange glow
                 window.paint_path(incoming_glow_path, rgba(0x4488ff60)); // Blue glow
-                
+
                 // Draw normal (non-selected) edges
                 let mut normal_path = gpui::Path::new(offset);
                 for edge in &edge_data {
@@ -563,7 +585,7 @@ impl Render for Graph {
                     }
                 }
                 window.paint_path(normal_path, normal_color);
-                
+
                 // Draw selected edges with appropriate colors
                 // Orange for outgoing (source selected), blue for incoming (target selected)
                 let mut outgoing_path = gpui::Path::new(offset);
@@ -579,8 +601,8 @@ impl Render for Graph {
                         EdgeSelection::None => {}
                     }
                 }
-                window.paint_path(outgoing_path, source_color);  // Orange for outgoing
-                window.paint_path(incoming_path, target_color);  // Blue for incoming
+                window.paint_path(outgoing_path, source_color); // Orange for outgoing
+                window.paint_path(incoming_path, target_color); // Blue for incoming
             },
         )
         .absolute()
@@ -598,7 +620,7 @@ impl Render for Graph {
         let text_color = graph_cx.theme().foreground;
         let border_color = graph_cx.theme().border;
         let bg_color = graph_cx.theme().secondary;
-        
+
         // Zoom controls panel
         let zoom_percent = (self.zoom * 100.0) as i32;
         let layout_mode = self.layout_mode;
@@ -625,7 +647,7 @@ impl Render for Graph {
                         this.fit_to_content(cx);
                     }),
                 );
-            
+
             // Layout mode toggle button
             let layout_label = match layout_mode {
                 LayoutMode::Force => "Force",
@@ -650,7 +672,7 @@ impl Render for Graph {
                                 this.apply_dagre_layout(cx);
                                 this.playing = false; // Stop force simulation
                                 LayoutMode::Dagre
-                            },
+                            }
                             LayoutMode::Dagre => LayoutMode::Force,
                         };
                         cx.notify();
@@ -687,7 +709,8 @@ impl Render for Graph {
         let sim_canvas = canvas(
             move |_bounds, _window, _cx| (),
             move |_bounds, _state, window, cx| {
-                let (playing, layout_mode) = cx.read_entity(&graph_handle, |g: &Graph, _| (g.playing, g.layout_mode));
+                let (playing, layout_mode) =
+                    cx.read_entity(&graph_handle, |g: &Graph, _| (g.playing, g.layout_mode));
                 // Only run force simulation when playing AND in Force mode
                 if !playing || layout_mode != LayoutMode::Force {
                     return;
@@ -701,7 +724,7 @@ impl Render for Graph {
 
                 // Number of simulation steps per frame for faster convergence
                 let steps_per_frame = 5;
-                
+
                 for _step in 0..steps_per_frame {
                     // Read positions and sizes
                     let mut xs: Vec<f32> = Vec::with_capacity(n);
@@ -709,7 +732,8 @@ impl Render for Graph {
                     let mut widths: Vec<f32> = Vec::with_capacity(n);
                     let mut heights: Vec<f32> = Vec::with_capacity(n);
                     for ent in &nodes_for_sim {
-                        let (x, y, w, h) = cx.read_entity(ent, |nd, _| (nd.x, nd.y, nd.width, nd.height));
+                        let (x, y, w, h) =
+                            cx.read_entity(ent, |nd, _| (nd.x, nd.y, nd.width, nd.height));
                         xs.push((x / px(1.0)) as f32);
                         ys.push((y / px(1.0)) as f32);
                         widths.push(w);
@@ -729,37 +753,111 @@ impl Render for Graph {
                     let center_x = 400.0f32;
                     let center_y = 300.0f32;
 
-                // Spatial grid for approximate repulsion
-                use std::collections::HashMap;
-                // Cell size must be larger than max node dimension to catch all overlaps
-                let max_node_dim = widths.iter().chain(heights.iter()).cloned().fold(0.0f32, f32::max);
-                let cell = (max_node_dim + 100.0).max(300.0f32);
-                let mut bins: HashMap<(i32, i32), Vec<usize>> = HashMap::with_capacity(n * 2);
-                for i in 0..n {
-                    let gx = (xs[i] / cell).floor() as i32;
-                    let gy = (ys[i] / cell).floor() as i32;
-                    bins.entry((gx, gy)).or_default().push(i);
-                }
-                let neighbors = [
-                    (-1, -1),
-                    (0, -1),
-                    (1, -1),
-                    (-1, 0),
-                    (0, 0),
-                    (1, 0),
-                    (-1, 1),
-                    (0, 1),
-                    (1, 1),
-                ];
-                for i in 0..n {
-                    let gx = (xs[i] / cell).floor() as i32;
-                    let gy = (ys[i] / cell).floor() as i32;
-                    for (dxg, dyg) in neighbors {
-                        if let Some(v) = bins.get(&(gx + dxg, gy + dyg)) {
-                            for &j in v {
-                                if j <= i {
-                                    continue;
+                    // Spatial grid for approximate repulsion
+                    use std::collections::HashMap;
+                    // Cell size must be larger than max node dimension to catch all overlaps
+                    let max_node_dim = widths
+                        .iter()
+                        .chain(heights.iter())
+                        .cloned()
+                        .fold(0.0f32, f32::max);
+                    let cell = (max_node_dim + 100.0).max(300.0f32);
+                    let mut bins: HashMap<(i32, i32), Vec<usize>> = HashMap::with_capacity(n * 2);
+                    for i in 0..n {
+                        let gx = (xs[i] / cell).floor() as i32;
+                        let gy = (ys[i] / cell).floor() as i32;
+                        bins.entry((gx, gy)).or_default().push(i);
+                    }
+                    let neighbors = [
+                        (-1, -1),
+                        (0, -1),
+                        (1, -1),
+                        (-1, 0),
+                        (0, 0),
+                        (1, 0),
+                        (-1, 1),
+                        (0, 1),
+                        (1, 1),
+                    ];
+                    for i in 0..n {
+                        let gx = (xs[i] / cell).floor() as i32;
+                        let gy = (ys[i] / cell).floor() as i32;
+                        for (dxg, dyg) in neighbors {
+                            if let Some(v) = bins.get(&(gx + dxg, gy + dyg)) {
+                                for &j in v {
+                                    if j <= i {
+                                        continue;
+                                    }
+                                    // Centers of nodes
+                                    let cx_i = xs[i] + widths[i] / 2.0;
+                                    let cy_i = ys[i] + heights[i] / 2.0;
+                                    let cx_j = xs[j] + widths[j] / 2.0;
+                                    let cy_j = ys[j] + heights[j] / 2.0;
+
+                                    let dx = cx_j - cx_i;
+                                    let dy = cy_j - cy_i;
+                                    let d2 = dx * dx + dy * dy + 0.01;
+                                    let inv = 1.0 / d2;
+                                    let fx_ij = repulsion * dx * inv;
+                                    let fy_ij = repulsion * dy * inv;
+                                    fx[i] -= fx_ij;
+                                    fy[i] -= fy_ij;
+                                    fx[j] += fx_ij;
+                                    fy[j] += fy_ij;
                                 }
+                            }
+                        }
+                    }
+
+                    // Attraction along edges
+                    for edge in &edges {
+                        let i = edge.source;
+                        let j = edge.target;
+                        if i >= n || j >= n {
+                            continue;
+                        }
+                        let dx = xs[j] - xs[i];
+                        let dy = ys[j] - ys[i];
+                        let fx_e = attraction * dx;
+                        let fy_e = attraction * dy;
+                        fx[i] += fx_e;
+                        fy[i] += fy_e;
+                        fx[j] -= fx_e;
+                        fy[j] -= fy_e;
+                    }
+
+                    // Gravity towards center
+                    for i in 0..n {
+                        fx[i] += gravity * (center_x - xs[i]);
+                        fy[i] += gravity * (center_y - ys[i]);
+                    }
+
+                    // Integrate and clamp small step
+                    for i in 0..n {
+                        let mut dx = fx[i] * dt;
+                        let mut dy = fy[i] * dt;
+                        dx *= damping;
+                        dy *= damping;
+                        let disp2 = dx * dx + dy * dy;
+                        if disp2 > max_disp * max_disp {
+                            let s = max_disp / disp2.sqrt();
+                            dx *= s;
+                            dy *= s;
+                        }
+                        xs[i] += dx;
+                        ys[i] += dy;
+                    }
+
+                    // Overlap resolution pass - push overlapping nodes apart directly
+                    let padding = 20.0f32; // Minimum gap between nodes
+                    for _ in 0..3 {
+                        // Multiple iterations for better resolution
+                        for i in 0..n {
+                            for j in (i + 1)..n {
+                                // Required separation
+                                let sep_x = (widths[i] + widths[j]) / 2.0 + padding;
+                                let sep_y = (heights[i] + heights[j]) / 2.0 + padding;
+
                                 // Centers of nodes
                                 let cx_i = xs[i] + widths[i] / 2.0;
                                 let cy_i = ys[i] + heights[i] / 2.0;
@@ -768,120 +866,50 @@ impl Render for Graph {
 
                                 let dx = cx_j - cx_i;
                                 let dy = cy_j - cy_i;
-                                let d2 = dx * dx + dy * dy + 0.01;
-                                let inv = 1.0 / d2;
-                                let fx_ij = repulsion * dx * inv;
-                                let fy_ij = repulsion * dy * inv;
-                                fx[i] -= fx_ij;
-                                fy[i] -= fy_ij;
-                                fx[j] += fx_ij;
-                                fy[j] += fy_ij;
-                            }
-                        }
-                    }
-                }
 
-                // Attraction along edges
-                for edge in &edges {
-                    let i = edge.source;
-                    let j = edge.target;
-                    if i >= n || j >= n {
-                        continue;
-                    }
-                    let dx = xs[j] - xs[i];
-                    let dy = ys[j] - ys[i];
-                    let fx_e = attraction * dx;
-                    let fy_e = attraction * dy;
-                    fx[i] += fx_e;
-                    fy[i] += fy_e;
-                    fx[j] -= fx_e;
-                    fy[j] -= fy_e;
-                }
+                                let overlap_x = sep_x - dx.abs();
+                                let overlap_y = sep_y - dy.abs();
 
-                // Gravity towards center
-                for i in 0..n {
-                    fx[i] += gravity * (center_x - xs[i]);
-                    fy[i] += gravity * (center_y - ys[i]);
-                }
-
-                // Integrate and clamp small step
-                for i in 0..n {
-                    let mut dx = fx[i] * dt;
-                    let mut dy = fy[i] * dt;
-                    dx *= damping;
-                    dy *= damping;
-                    let disp2 = dx * dx + dy * dy;
-                    if disp2 > max_disp * max_disp {
-                        let s = max_disp / disp2.sqrt();
-                        dx *= s;
-                        dy *= s;
-                    }
-                    xs[i] += dx;
-                    ys[i] += dy;
-                }
-
-                // Overlap resolution pass - push overlapping nodes apart directly
-                let padding = 20.0f32; // Minimum gap between nodes
-                for _ in 0..3 {
-                    // Multiple iterations for better resolution
-                    for i in 0..n {
-                        for j in (i + 1)..n {
-                            // Required separation
-                            let sep_x = (widths[i] + widths[j]) / 2.0 + padding;
-                            let sep_y = (heights[i] + heights[j]) / 2.0 + padding;
-
-                            // Centers of nodes
-                            let cx_i = xs[i] + widths[i] / 2.0;
-                            let cy_i = ys[i] + heights[i] / 2.0;
-                            let cx_j = xs[j] + widths[j] / 2.0;
-                            let cy_j = ys[j] + heights[j] / 2.0;
-
-                            let dx = cx_j - cx_i;
-                            let dy = cy_j - cy_i;
-
-                            let overlap_x = sep_x - dx.abs();
-                            let overlap_y = sep_y - dy.abs();
-
-                            if overlap_x > 0.0 && overlap_y > 0.0 {
-                                // Push apart along the axis of least overlap
-                                if overlap_x < overlap_y {
-                                    // Push horizontally
-                                    let push = overlap_x / 2.0 + 1.0;
-                                    if dx >= 0.0 {
-                                        xs[i] -= push;
-                                        xs[j] += push;
+                                if overlap_x > 0.0 && overlap_y > 0.0 {
+                                    // Push apart along the axis of least overlap
+                                    if overlap_x < overlap_y {
+                                        // Push horizontally
+                                        let push = overlap_x / 2.0 + 1.0;
+                                        if dx >= 0.0 {
+                                            xs[i] -= push;
+                                            xs[j] += push;
+                                        } else {
+                                            xs[i] += push;
+                                            xs[j] -= push;
+                                        }
                                     } else {
-                                        xs[i] += push;
-                                        xs[j] -= push;
-                                    }
-                                } else {
-                                    // Push vertically
-                                    let push = overlap_y / 2.0 + 1.0;
-                                    if dy >= 0.0 {
-                                        ys[i] -= push;
-                                        ys[j] += push;
-                                    } else {
-                                        ys[i] += push;
-                                        ys[j] -= push;
+                                        // Push vertically
+                                        let push = overlap_y / 2.0 + 1.0;
+                                        if dy >= 0.0 {
+                                            ys[i] -= push;
+                                            ys[j] += push;
+                                        } else {
+                                            ys[i] += push;
+                                            ys[j] -= push;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Write back
-                for i in 0..n {
-                    let nx = px(xs[i] as f32);
-                    let ny = px(ys[i] as f32);
-                    let ent = nodes_for_sim[i].clone();
-                    cx.update_entity(&ent, move |node, _| {
-                        node.x = nx;
-                        node.y = ny;
-                    });
-                }
+                    // Write back
+                    for i in 0..n {
+                        let nx = px(xs[i] as f32);
+                        let ny = px(ys[i] as f32);
+                        let ent = nodes_for_sim[i].clone();
+                        cx.update_entity(&ent, move |node, _| {
+                            node.x = nx;
+                            node.y = ny;
+                        });
+                    }
                 } // End of steps_per_frame loop
-                
+
                 // Bookkeep a tick so any observers can react and mark the graph dirty
                 cx.update_entity(&graph_handle, |g: &mut Graph, _| {
                     g.sim_tick = g.sim_tick.wrapping_add(1);
@@ -906,23 +934,25 @@ impl Render for Graph {
                         e.position.x - this.container_offset.x,
                         e.position.y - this.container_offset.y,
                     );
-                    
+
                     // Ignore clicks in UI control regions (top-left controls panel, top-right play button)
                     // Controls panel: top-left, approximately 280x50 area
                     // Play button: top-right, approximately 40x40 area
                     let container_width = this.container_size.width;
                     let in_controls_panel = cursor.x < px(290.0) && cursor.y < px(60.0);
-                    let in_play_button = cursor.x > container_width - px(50.0) && cursor.y < px(50.0);
-                    
+                    let in_play_button =
+                        cursor.x > container_width - px(50.0) && cursor.y < px(50.0);
+
                     if in_controls_panel || in_play_button {
                         // Don't start panning or selecting when clicking on UI controls
                         return;
                     }
-                    
+
                     let mut hit_index: Option<usize> = None;
                     // Check each node using its actual width and height
                     for (i, n) in this.nodes.iter().enumerate() {
-                        let (nx, ny, node_width, node_height) = cx.read_entity(n, |node, _| (node.x, node.y, node.width, node.height));
+                        let (nx, ny, node_width, node_height) =
+                            cx.read_entity(n, |node, _| (node.x, node.y, node.width, node.height));
                         let left = this.pan.x + nx * this.zoom;
                         let top = this.pan.y + ny * this.zoom;
                         let scaled_width = px(node_width) * this.zoom;
@@ -1026,12 +1056,16 @@ impl Render for Graph {
             )
             .on_mouse_move(graph_cx.listener(|this, e: &gpui::MouseMoveEvent, _w, cx| {
                 // Stop panning if left mouse button is no longer pressed
-                if this.is_panning && !e.pressed_button.is_some_and(|b| b == gpui::MouseButton::Left || b == gpui::MouseButton::Middle) {
+                if this.is_panning
+                    && !e.pressed_button.is_some_and(|b| {
+                        b == gpui::MouseButton::Left || b == gpui::MouseButton::Middle
+                    })
+                {
                     this.is_panning = false;
                     cx.notify();
                     return;
                 }
-                
+
                 if this.is_panning {
                     let current_pos = point(
                         e.position.x - this.container_offset.x,
@@ -1042,7 +1076,7 @@ impl Render for Graph {
                         current_pos.y - this.pan_start_pos.y,
                     );
                     this.pan = point(this.pan_start.x + delta.x, this.pan_start.y + delta.y);
-                    
+
                     // Update all nodes with new pan
                     for n in &this.nodes {
                         let pan = this.pan;
@@ -1077,17 +1111,15 @@ impl Render for Graph {
                     .items_center()
                     .justify_center()
                     .text_size(px(12.0))
-                    .child(
-                        div()
-                            .text_color(button_text_color)
-                            .child(if self.layout_mode == LayoutMode::Dagre {
-                                "⟳" // Refresh/relayout icon for dagre
-                            } else if self.playing {
-                                "||" // Pause symbol (using ASCII for better visibility)
-                            } else {
-                                "▶"
-                            })
-                    )
+                    .child(div().text_color(button_text_color).child(
+                        if self.layout_mode == LayoutMode::Dagre {
+                            "⟳" // Refresh/relayout icon for dagre
+                        } else if self.playing {
+                            "||" // Pause symbol (using ASCII for better visibility)
+                        } else {
+                            "▶"
+                        },
+                    ))
                     .on_mouse_down(
                         gpui::MouseButton::Left,
                         graph_cx.listener({
