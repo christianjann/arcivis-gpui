@@ -695,32 +695,35 @@ impl Render for Graph {
 
                 window.request_animation_frame();
 
-                // Read positions and sizes
-                let mut xs: Vec<f32> = Vec::with_capacity(n);
-                let mut ys: Vec<f32> = Vec::with_capacity(n);
-                let mut widths: Vec<f32> = Vec::with_capacity(n);
-                let mut heights: Vec<f32> = Vec::with_capacity(n);
-                for ent in &nodes_for_sim {
-                    let (x, y, w, h) = cx.read_entity(ent, |nd, _| (nd.x, nd.y, nd.width, nd.height));
-                    xs.push((x / px(1.0)) as f32);
-                    ys.push((y / px(1.0)) as f32);
-                    widths.push(w);
-                    heights.push(h);
-                }
+                // Number of simulation steps per frame for faster convergence
+                let steps_per_frame = 5;
+                
+                for _step in 0..steps_per_frame {
+                    // Read positions and sizes
+                    let mut xs: Vec<f32> = Vec::with_capacity(n);
+                    let mut ys: Vec<f32> = Vec::with_capacity(n);
+                    let mut widths: Vec<f32> = Vec::with_capacity(n);
+                    let mut heights: Vec<f32> = Vec::with_capacity(n);
+                    for ent in &nodes_for_sim {
+                        let (x, y, w, h) = cx.read_entity(ent, |nd, _| (nd.x, nd.y, nd.width, nd.height));
+                        xs.push((x / px(1.0)) as f32);
+                        ys.push((y / px(1.0)) as f32);
+                        widths.push(w);
+                        heights.push(h);
+                    }
 
-                let mut fx = vec![0.0f32; n];
-                let mut fy = vec![0.0f32; n];
+                    let mut fx = vec![0.0f32; n];
+                    let mut fy = vec![0.0f32; n];
 
-                // Force parameters (tune for stability/perf)
-                // Increased repulsion for larger rectangular nodes (80x32)
-                let repulsion = 800.0f32; // higher repulsion for more spacing
-                let attraction = 0.02f32; // slightly weaker springs
-                let gravity = 0.004f32; // pull toward center
-                let damping = 0.85f32; // velocity damping
-                let dt = 0.5f32; // larger step, clamped below
-                let max_disp = 8.0f32; // allow more movement per step
-                let center_x = 400.0f32;
-                let center_y = 300.0f32;
+                    // Force parameters (tune for stability/perf)
+                    let repulsion = 1200.0f32; // higher repulsion for faster spreading
+                    let attraction = 0.03f32; // slightly stronger springs
+                    let gravity = 0.006f32; // pull toward center
+                    let damping = 0.9f32; // less damping for faster movement
+                    let dt = 0.8f32; // larger time step
+                    let max_disp = 15.0f32; // allow more movement per step
+                    let center_x = 400.0f32;
+                    let center_y = 300.0f32;
 
                 // Spatial grid for approximate repulsion
                 use std::collections::HashMap;
@@ -873,6 +876,8 @@ impl Render for Graph {
                         node.y = ny;
                     });
                 }
+                } // End of steps_per_frame loop
+                
                 // Bookkeep a tick so any observers can react and mark the graph dirty
                 cx.update_entity(&graph_handle, |g: &mut Graph, _| {
                     g.sim_tick = g.sim_tick.wrapping_add(1);
