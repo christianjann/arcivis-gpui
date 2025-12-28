@@ -1,33 +1,617 @@
-// Vehicle Model Definition in KDL
+// Concrete Vehicle E/E Architecture Model in KDL
+// Demonstrates ECUs, buses, software partitions, and service-oriented communication
 
-Vehicle type="class" {
-  mass type="Real"
-  maxSpeed type="Real"
-  engine type="Engine"
-  wheels type="Wheel" multiplicity=4
-  transmission type="Transmission"
+// =============================================================================
+// NETWORK TOPOLOGY
+// =============================================================================
+
+CAN_Powertrain type="bus" {
+    protocol "CAN-FD"
+    baudrate 5000000
+    description "High-speed powertrain domain bus"
 }
 
-Engine type="class" {
-  horsepower type="Real"
-  displacement type="Real"
+CAN_Chassis type="bus" {
+    protocol "CAN-FD"
+    baudrate 2000000
+    description "Chassis and safety domain bus"
 }
 
-Wheel type="class" {
-  diameter type="Real"
-  type type="String"
+CAN_Body type="bus" {
+    protocol "CAN"
+    baudrate 500000
+    description "Body electronics domain bus"
 }
 
-Transmission type="class" {
-  gears type="Integer"
-  type type="String"
+Ethernet_Backbone type="bus" {
+    protocol "100BASE-T1"
+    baudrate 100000000
+    description "Central backbone for high-bandwidth communication"
 }
 
-Car type="class" inherits="Vehicle" {
-  numDoors type="Integer" default=4
+Ethernet_ADAS type="bus" {
+    protocol "1000BASE-T1"
+    baudrate 1000000000
+    description "High-speed ADAS sensor fusion network"
 }
 
-Truck type="class" inherits="Vehicle" {
-  bedLength type="Real"
-  cargoCapacity type="Real"
+// =============================================================================
+// GATEWAY ECU - Central Network Hub
+// =============================================================================
+
+GatewayECU type="ecu" {
+    vendor "Bosch"
+    processor "Aurix TC397"
+    memory_mb 8
+    
+    // Network interfaces
+    interface "can0" bus="CAN_Powertrain"
+    interface "can1" bus="CAN_Chassis"
+    interface "can2" bus="CAN_Body"
+    interface "eth0" bus="Ethernet_Backbone"
+    
+    // Software partitions
+    partition "GW_Routing" {
+        autosar_version "Classic 4.4"
+        safety_level "QM"
+        
+        swc "CanRouter" {
+            description "Routes CAN messages between domains"
+            runnable "RouteMessages" period_ms=5
+        }
+        
+        swc "EthGateway" {
+            description "CAN to Ethernet protocol conversion"
+            runnable "ConvertToSOMEIP" period_ms=10
+        }
+    }
+    
+    partition "GW_Diagnostics" {
+        autosar_version "Classic 4.4"
+        safety_level "QM"
+        
+        swc "DiagnosticManager" {
+            description "UDS diagnostic handling"
+            runnable "ProcessDiagRequest" event="OnRequest"
+            
+            // Provides diagnostic service
+            provided_port "DiagService" {
+                interface "IDiagnostics"
+                protocol "SOME/IP"
+                service_id 0x1001
+            }
+        }
+    }
+}
+
+// =============================================================================
+// ENGINE MANAGEMENT ECU
+// =============================================================================
+
+EngineECU type="ecu" {
+    vendor "Continental"
+    processor "Aurix TC387"
+    memory_mb 4
+    
+    interface "can0" bus="CAN_Powertrain"
+    
+    partition "EMS_Control" {
+        autosar_version "Classic 4.4"
+        safety_level "ASIL-B"
+        
+        swc "FuelInjectionController" {
+            description "Controls fuel injection timing and quantity"
+            runnable "CalcInjection" period_ms=1
+            
+            // Sensor inputs
+            input_port "CrankshaftPos" signal="CrankPos_deg"
+            input_port "CamshaftPos" signal="CamPos_deg"
+            input_port "MAP" signal="ManifoldPressure_kPa"
+            input_port "MAF" signal="MassAirFlow_gs"
+            input_port "ThrottlePos" signal="ThrottleAngle_pct"
+            
+            // Actuator outputs
+            output_port "Injector1" signal="InjDuration1_us"
+            output_port "Injector2" signal="InjDuration2_us"
+            output_port "Injector3" signal="InjDuration3_us"
+            output_port "Injector4" signal="InjDuration4_us"
+        }
+        
+        swc "IgnitionController" {
+            description "Controls spark timing"
+            runnable "CalcIgnition" period_ms=1
+            
+            input_port "EngineSpeed" signal="RPM"
+            input_port "EngineLoad" signal="Load_pct"
+            input_port "KnockSensor" signal="KnockIntensity"
+            
+            output_port "SparkAdvance" signal="SparkAngle_deg"
+        }
+        
+        swc "TorqueCoordinator" {
+            description "Engine torque management"
+            runnable "CoordinateTorque" period_ms=10
+            
+            // Provides engine data service to other ECUs
+            provided_port "EngineDataService" {
+                interface "IEngineData"
+                protocol "SOME/IP"
+                service_id 0x2001
+                
+                method "GetEngineSpeed" id=0x01
+                method "GetEngineTorque" id=0x02
+                event "OnEngineStateChange" id=0x8001
+            }
+        }
+    }
+}
+
+// =============================================================================
+// TRANSMISSION ECU
+// =============================================================================
+
+TransmissionECU type="ecu" {
+    vendor "ZF"
+    processor "Infineon TC364"
+    memory_mb 2
+    
+    interface "can0" bus="CAN_Powertrain"
+    
+    partition "TCU_Control" {
+        autosar_version "Classic 4.4"
+        safety_level "ASIL-B"
+        
+        swc "GearController" {
+            description "Automatic transmission shift control"
+            runnable "DetermineGear" period_ms=10
+            runnable "ExecuteShift" event="OnShiftRequest"
+            
+            // Subscribes to engine data from EngineECU
+            required_port "EngineData" {
+                interface "IEngineData"
+                protocol "SOME/IP"
+                service_id 0x2001
+                
+                // Consumes these from EngineECU.TorqueCoordinator
+                method "GetEngineSpeed"
+                method "GetEngineTorque"
+                event "OnEngineStateChange"
+            }
+            
+            input_port "VehicleSpeed" signal="VehSpd_kmh"
+            input_port "AccelPedal" signal="AccelPos_pct"
+            input_port "BrakePedal" signal="BrakePressed"
+            input_port "GearSelector" signal="SelectorPos"
+            
+            output_port "CurrentGear" signal="Gear"
+            output_port "ClutchPressure" signal="ClutchP_bar"
+        }
+        
+        swc "TorqueRequestHandler" {
+            description "Coordinates torque requests with engine"
+            runnable "RequestTorqueReduction" event="OnShiftStart"
+            
+            // Provides transmission status to other ECUs
+            provided_port "TransmissionStatus" {
+                interface "ITransmissionData"
+                protocol "SOME/IP"
+                service_id 0x2002
+                
+                method "GetCurrentGear" id=0x01
+                method "GetTransmissionMode" id=0x02
+                event "OnGearChange" id=0x8001
+            }
+        }
+    }
+}
+
+// =============================================================================
+// VEHICLE DYNAMICS ECU (ESP/ABS)
+// =============================================================================
+
+VehicleDynamicsECU type="ecu" {
+    vendor "Bosch"
+    processor "Aurix TC399"
+    memory_mb 8
+    
+    interface "can0" bus="CAN_Chassis"
+    interface "eth0" bus="Ethernet_Backbone"
+    
+    partition "VDC_Safety" {
+        autosar_version "Classic 4.4"
+        safety_level "ASIL-D"
+        
+        swc "ABSController" {
+            description "Anti-lock braking system"
+            runnable "CalcSlip" period_ms=2
+            runnable "ModulateBrake" period_ms=2
+            
+            input_port "WheelSpeed_FL" signal="WhlSpd_FL_rpm"
+            input_port "WheelSpeed_FR" signal="WhlSpd_FR_rpm"
+            input_port "WheelSpeed_RL" signal="WhlSpd_RL_rpm"
+            input_port "WheelSpeed_RR" signal="WhlSpd_RR_rpm"
+            input_port "BrakePressure" signal="MasterCyl_bar"
+            
+            output_port "ValveCmd_FL" signal="ABSValve_FL"
+            output_port "ValveCmd_FR" signal="ABSValve_FR"
+            output_port "ValveCmd_RL" signal="ABSValve_RL"
+            output_port "ValveCmd_RR" signal="ABSValve_RR"
+        }
+        
+        swc "ESPController" {
+            description "Electronic stability program"
+            runnable "EstimateVehicleState" period_ms=5
+            runnable "StabilityIntervention" period_ms=5
+            
+            input_port "YawRate" signal="YawRate_degs"
+            input_port "LatAccel" signal="LatAccel_g"
+            input_port "LongAccel" signal="LongAccel_g"
+            input_port "SteeringAngle" signal="SWA_deg"
+            
+            output_port "ESPActive" signal="ESP_Active"
+            output_port "TorqueRequest" signal="ESP_TorqueReq_Nm"
+        }
+    }
+    
+    partition "VDC_Application" {
+        autosar_version "Classic 4.4"
+        safety_level "ASIL-B"
+        
+        swc "VehicleStateEstimator" {
+            description "Estimates vehicle dynamics state"
+            runnable "FuseData" period_ms=10
+            
+            // Provides vehicle dynamics data service
+            provided_port "VehicleDynamicsService" {
+                interface "IVehicleDynamics"
+                protocol "SOME/IP"
+                service_id 0x3001
+                
+                method "GetVehicleSpeed" id=0x01
+                method "GetYawRate" id=0x02
+                method "GetAcceleration" id=0x03
+                event "OnVehicleStateUpdate" id=0x8001
+            }
+        }
+    }
+}
+
+// =============================================================================
+// ADAS DOMAIN CONTROLLER
+// =============================================================================
+
+ADASController type="ecu" {
+    vendor "Mobileye"
+    processor "EyeQ5"
+    memory_mb 16384
+    
+    interface "eth0" bus="Ethernet_ADAS"
+    interface "eth1" bus="Ethernet_Backbone"
+    
+    partition "ADAS_Perception" {
+        autosar_version "Adaptive R21-11"
+        safety_level "ASIL-B"
+        
+        swc "CameraProcessor" {
+            description "Front camera object detection"
+            runnable "ProcessFrame" period_ms=33
+            
+            input_port "CameraFeed" signal="FrontCam_Raw"
+            output_port "DetectedObjects" signal="ObjectList"
+        }
+        
+        swc "RadarFusion" {
+            description "Radar data processing and fusion"
+            runnable "FuseRadarData" period_ms=50
+            
+            input_port "RadarFront" signal="FrontRadar_Targets"
+            input_port "RadarCornerFL" signal="CornerFL_Targets"
+            input_port "RadarCornerFR" signal="CornerFR_Targets"
+            output_port "FusedTargets" signal="RadarObjects"
+        }
+        
+        swc "SensorFusion" {
+            description "Multi-sensor object fusion"
+            runnable "FuseAll" period_ms=50
+            
+            // Provides environment model to other functions
+            provided_port "EnvironmentModel" {
+                interface "IEnvironmentModel"
+                protocol "SOME/IP"
+                service_id 0x4001
+                
+                method "GetObjectList" id=0x01
+                method "GetFreeSpace" id=0x02
+                method "GetLaneInfo" id=0x03
+                event "OnEnvironmentUpdate" id=0x8001
+            }
+        }
+    }
+    
+    partition "ADAS_Planning" {
+        autosar_version "Adaptive R21-11"
+        safety_level "ASIL-B"
+        
+        swc "ACCController" {
+            description "Adaptive Cruise Control"
+            runnable "PlanLongitudinal" period_ms=20
+            
+            // Subscribes to environment model
+            required_port "Environment" {
+                interface "IEnvironmentModel"
+                protocol "SOME/IP"
+                service_id 0x4001
+            }
+            
+            // Subscribes to vehicle dynamics
+            required_port "VehicleState" {
+                interface "IVehicleDynamics"
+                protocol "SOME/IP"
+                service_id 0x3001
+            }
+            
+            output_port "AccelRequest" signal="ACC_Accel_mss"
+            output_port "ACCStatus" signal="ACC_State"
+        }
+        
+        swc "LaneKeepAssist" {
+            description "Lane keeping assistance"
+            runnable "PlanLateral" period_ms=20
+            
+            required_port "Environment" {
+                interface "IEnvironmentModel"
+                protocol "SOME/IP"
+                service_id 0x4001
+            }
+            
+            output_port "SteeringRequest" signal="LKA_Torque_Nm"
+            output_port "LKAStatus" signal="LKA_State"
+        }
+    }
+}
+
+// =============================================================================
+// INSTRUMENT CLUSTER ECU
+// =============================================================================
+
+ClusterECU type="ecu" {
+    vendor "Visteon"
+    processor "NXP i.MX8"
+    memory_mb 4096
+    
+    interface "can0" bus="CAN_Body"
+    interface "eth0" bus="Ethernet_Backbone"
+    
+    partition "Cluster_HMI" {
+        autosar_version "Adaptive R21-11"
+        safety_level "QM"
+        
+        swc "SpeedDisplay" {
+            description "Vehicle speed display"
+            runnable "UpdateSpeed" period_ms=50
+            
+            // Subscribes to vehicle dynamics data
+            required_port "VehicleDynamics" {
+                interface "IVehicleDynamics"
+                protocol "SOME/IP"
+                service_id 0x3001
+                
+                method "GetVehicleSpeed"
+            }
+        }
+        
+        swc "EngineDisplay" {
+            description "Engine RPM and status display"
+            runnable "UpdateEngine" period_ms=50
+            
+            // Subscribes to engine data
+            required_port "EngineData" {
+                interface "IEngineData"
+                protocol "SOME/IP"
+                service_id 0x2001
+                
+                method "GetEngineSpeed"
+                event "OnEngineStateChange"
+            }
+        }
+        
+        swc "GearIndicator" {
+            description "Current gear display"
+            runnable "UpdateGear" event="OnGearChange"
+            
+            // Subscribes to transmission data
+            required_port "TransmissionData" {
+                interface "ITransmissionData"
+                protocol "SOME/IP"
+                service_id 0x2002
+                
+                method "GetCurrentGear"
+                event "OnGearChange"
+            }
+        }
+        
+        swc "ADASVisualizer" {
+            description "ADAS status and warnings"
+            runnable "UpdateADAS" period_ms=100
+            
+            // Subscribes to environment model for visualization
+            required_port "Environment" {
+                interface "IEnvironmentModel"
+                protocol "SOME/IP"
+                service_id 0x4001
+                
+                method "GetObjectList"
+                method "GetLaneInfo"
+            }
+        }
+    }
+}
+
+// =============================================================================
+// SERVICE INTERFACES DEFINITIONS
+// =============================================================================
+
+IEngineData type="interface" {
+    description "Engine data service interface"
+    
+    method "EngineSpeed" {
+        output "rpm" type="uint16"
+    }
+    
+    method "EngineTorque" {
+        output "torque_nm" type="int16"
+    }
+    
+    event "EngineStateChange" {
+        field "state" type="EngineState"
+        field "rpm" type="uint16"
+        field "torque" type="int16"
+    }
+}
+
+ITransmissionData type="interface" {
+    description "Transmission data service interface"
+    
+    method "CurrentGear" {
+        output "gear" type="int8"
+    }
+    
+    method "TransmissionMode" {
+        output "mode" type="TransMode"
+    }
+    
+    event "GearChange" {
+        field "old_gear" type="int8"
+        field "new_gear" type="int8"
+        field "shift_time_ms" type="uint16"
+    }
+}
+
+IVehicleDynamics type="interface" {
+    description "Vehicle dynamics data service interface"
+    
+    method "VehicleSpeed" {
+        output "speed_kmh" type="float32"
+    }
+    
+    method "YawRate" {
+        output "yaw_degs" type="float32"
+    }
+    
+    method "Acceleration" {
+        output "lat_g" type="float32"
+        output "long_g" type="float32"
+    }
+    
+    event "VehicleStateUpdate" {
+        field "speed" type="float32"
+        field "yaw_rate" type="float32"
+        field "lat_accel" type="float32"
+        field "long_accel" type="float32"
+    }
+}
+
+IEnvironmentModel type="interface" {
+    description "ADAS environment model service interface"
+    
+    method "ObjectList" {
+        output "objects" type="ObjectList"
+        output "timestamp_us" type="uint64"
+    }
+    
+    method "FreeSpace" {
+        output "freespace" type="FreeSpaceGrid"
+    }
+    
+    method "LaneInfo" {
+        output "left_lane" type="LaneMarking"
+        output "right_lane" type="LaneMarking"
+        output "lane_width_m" type="float32"
+    }
+    
+    event "EnvironmentUpdate" {
+        field "object_count" type="uint8"
+        field "nearest_object_dist_m" type="float32"
+        field "lane_departure_warning" type="bool"
+    }
+}
+
+IDiagnostics type="interface" {
+    description "Diagnostic service interface"
+    
+    method "ReadDTC" {
+        input "ecu_id" type="uint8"
+        output "dtc_list" type="DTCList"
+    }
+    
+    method "ClearDTC" {
+        input "ecu_id" type="uint8"
+        output "success" type="bool"
+    }
+    
+    method "ReadDataByID" {
+        input "data_id" type="uint16"
+        output "data" type="bytes"
+    }
+}
+
+// =============================================================================
+// DATA TYPES
+// =============================================================================
+
+EngineState type="enum" {
+    OFF value=0
+    CRANKING value=1
+    RUNNING value=2
+    STALLING value=3
+}
+
+TransMode type="enum" {
+    PARK value=0
+    REVERSE value=1
+    NEUTRAL value=2
+    DRIVE value=3
+    SPORT value=4
+    MANUAL value=5
+}
+
+Object type="struct" {
+    id type="uint16"
+    class type="ObjectClass"
+    pos_x_m type="float32"
+    pos_y_m type="float32"
+    vel_x_ms type="float32"
+    vel_y_ms type="float32"
+    width_m type="float32"
+    length_m type="float32"
+    confidence type="uint8"
+}
+
+ObjectClass type="enum" {
+    UNKNOWN value=0
+    CAR value=1
+    TRUCK value=2
+    MOTORCYCLE value=3
+    BICYCLE value=4
+    PEDESTRIAN value=5
+    ANIMAL value=6
+    STATIC value=7
+}
+
+LaneMarking type="struct" {
+    type type="LaneType"
+    c0 type="float32"
+    c1 type="float32"
+    c2 type="float32"
+    c3 type="float32"
+    confidence type="uint8"
+}
+
+LaneType type="enum" {
+    UNKNOWN value=0
+    SOLID value=1
+    DASHED value=2
+    DOUBLE_SOLID value=3
+    SOLID_DASHED value=4
+    DASHED_SOLID value=5
 }

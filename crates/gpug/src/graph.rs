@@ -236,27 +236,29 @@ impl Render for Graph {
         let pan = self.pan;
         let nodes = self.nodes.clone();
         let edges = self.edges.clone();
-        let graph_entity = graph_cx.entity();
         let edge_routing = self.edge_routing;
         let edges_canvas = canvas(
             |_bounds, _window, _cx| (),
             move |bounds, _state, window, cx| {
                 // Use bounds.origin to offset painting to the container's position
                 let offset = bounds.origin;
-                let mut path = gpui::Path::new(offset);
                 let thickness = (1.0f32 * zoom).max(1.0);
                 // Node dimensions for edge connections
                 let node_width = 80.0;
                 let node_height = 32.0;
                 
-                // Helper closure to draw a thick line segment
-                let draw_segment = |path: &mut gpui::Path<Pixels>, p1: Point<Pixels>, p2: Point<Pixels>| {
+                // Port colors for highlighted edges
+                let source_color = rgb(0xff8844); // Orange (outgoing port)
+                let target_color = rgb(0x4488ff); // Blue (incoming port)
+                let normal_color = rgb(0x323232);
+                
+                // Helper closure to draw a thick line segment to a path
+                let draw_segment = |path: &mut gpui::Path<Pixels>, p1: Point<Pixels>, p2: Point<Pixels>, half_thickness: f32| {
                     let dir = point(p2.x - p1.x, p2.y - p1.y);
                     let len = dir.magnitude() as f32;
                     if len <= 0.0001 {
                         return;
                     }
-                    let half_thickness: f32 = thickness as f32;
                     let normal = point(-dir.y, dir.x) * (half_thickness / len);
 
                     let p1a = point(p1.x + normal.x, p1.y + normal.y);
@@ -269,6 +271,23 @@ impl Render for Graph {
                     path.push_triangle((p2a, p1b, p2b), st);
                 };
                 
+                // Collect edge data with selection state
+                #[derive(Clone, Copy)]
+                enum EdgeSelection {
+                    None,
+                    SourceSelected,  // Edge is outgoing from selected node (orange)
+                    TargetSelected,  // Edge is incoming to selected node (blue)
+                    BothSelected,    // Both nodes selected
+                }
+                
+                struct EdgeData {
+                    p1: Point<Pixels>,
+                    p2: Point<Pixels>,
+                    selection: EdgeSelection,
+                }
+                
+                let mut edge_data: Vec<EdgeData> = Vec::with_capacity(edges.len());
+                
                 for edge in &edges {
                     let i = edge.source;
                     let j = edge.target;
@@ -276,44 +295,96 @@ impl Render for Graph {
                         continue;
                     }
                     // Connect from source's right port to target's left port
-                    let (x1, y1) = cx.read_entity(&nodes[i], |n, _| (
+                    let (x1, y1, source_selected) = cx.read_entity(&nodes[i], |n, _| (
                         n.x + px(node_width), // Right edge of source node
-                        n.y + px(node_height / 2.0) // Vertically centered
+                        n.y + px(node_height / 2.0), // Vertically centered
+                        n.selected
                     ));
-                    let (x2, y2) = cx.read_entity(&nodes[j], |n, _| (
+                    let (x2, y2, target_selected) = cx.read_entity(&nodes[j], |n, _| (
                         n.x, // Left edge of target node
-                        n.y + px(node_height / 2.0) // Vertically centered
+                        n.y + px(node_height / 2.0), // Vertically centered
+                        n.selected
                     ));
 
                     // Offset by bounds.origin so edges are drawn relative to container
                     let p1 = point(offset.x + pan.x + x1 * zoom, offset.y + pan.y + y1 * zoom);
                     let p2 = point(offset.x + pan.x + x2 * zoom, offset.y + pan.y + y2 * zoom);
                     
+                    let selection = match (source_selected, target_selected) {
+                        (true, true) => EdgeSelection::BothSelected,
+                        (true, false) => EdgeSelection::SourceSelected,  // Outgoing from selected
+                        (false, true) => EdgeSelection::TargetSelected,  // Incoming to selected
+                        (false, false) => EdgeSelection::None,
+                    };
+                    
+                    edge_data.push(EdgeData {
+                        p1,
+                        p2,
+                        selection,
+                    });
+                }
+                
+                // Helper to draw edge segments based on routing
+                let draw_edge = |path: &mut gpui::Path<Pixels>, p1: Point<Pixels>, p2: Point<Pixels>, half_thickness: f32| {
                     match edge_routing {
                         EdgeRouting::Straight => {
-                            // Direct line from p1 to p2
-                            draw_segment(&mut path, p1, p2);
+                            draw_segment(path, p1, p2, half_thickness);
                         }
                         EdgeRouting::Manhattan => {
-                            // Manhattan routing: horizontal -> vertical -> horizontal
-                            // Start horizontally from source port, go to midpoint X,
-                            // then vertically to target Y, then horizontally to target port
                             let mid_x = (p1.x + p2.x) / 2.0;
-                            
-                            // Segment 1: horizontal from p1 to midpoint
                             let corner1 = point(mid_x, p1.y);
-                            draw_segment(&mut path, p1, corner1);
-                            
-                            // Segment 2: vertical from corner1 to corner2
                             let corner2 = point(mid_x, p2.y);
-                            draw_segment(&mut path, corner1, corner2);
-                            
-                            // Segment 3: horizontal from corner2 to p2
-                            draw_segment(&mut path, corner2, p2);
+                            draw_segment(path, p1, corner1, half_thickness);
+                            draw_segment(path, corner1, corner2, half_thickness);
+                            draw_segment(path, corner2, p2, half_thickness);
                         }
                     }
+                };
+                
+                // Draw glow for selected edges first (underneath)
+                // Orange glow for outgoing, blue glow for incoming
+                let mut outgoing_glow_path = gpui::Path::new(offset);
+                let mut incoming_glow_path = gpui::Path::new(offset);
+                for edge in &edge_data {
+                    match edge.selection {
+                        EdgeSelection::SourceSelected | EdgeSelection::BothSelected => {
+                            draw_edge(&mut outgoing_glow_path, edge.p1, edge.p2, thickness * 4.0);
+                        }
+                        EdgeSelection::TargetSelected => {
+                            draw_edge(&mut incoming_glow_path, edge.p1, edge.p2, thickness * 4.0);
+                        }
+                        EdgeSelection::None => {}
+                    }
                 }
-                window.paint_path(path, rgb(0x323232));
+                window.paint_path(outgoing_glow_path, rgba(0xff884460)); // Orange glow
+                window.paint_path(incoming_glow_path, rgba(0x4488ff60)); // Blue glow
+                
+                // Draw normal (non-selected) edges
+                let mut normal_path = gpui::Path::new(offset);
+                for edge in &edge_data {
+                    if matches!(edge.selection, EdgeSelection::None) {
+                        draw_edge(&mut normal_path, edge.p1, edge.p2, thickness);
+                    }
+                }
+                window.paint_path(normal_path, normal_color);
+                
+                // Draw selected edges with appropriate colors
+                // Orange for outgoing (source selected), blue for incoming (target selected)
+                let mut outgoing_path = gpui::Path::new(offset);
+                let mut incoming_path = gpui::Path::new(offset);
+                for edge in &edge_data {
+                    match edge.selection {
+                        EdgeSelection::SourceSelected | EdgeSelection::BothSelected => {
+                            draw_edge(&mut outgoing_path, edge.p1, edge.p2, thickness * 2.0);
+                        }
+                        EdgeSelection::TargetSelected => {
+                            draw_edge(&mut incoming_path, edge.p1, edge.p2, thickness * 2.0);
+                        }
+                        EdgeSelection::None => {}
+                    }
+                }
+                window.paint_path(outgoing_path, source_color);  // Orange for outgoing
+                window.paint_path(incoming_path, target_color);  // Blue for incoming
             },
         )
         .absolute()
@@ -380,6 +451,7 @@ impl Render for Graph {
         };
 
         // Simulation canvas: runs a physics step per frame when playing
+        let graph_entity = graph_cx.entity();
         let graph_handle = graph_entity.clone();
         let nodes_for_sim = self.nodes.clone();
         let edges = self.edges.clone();

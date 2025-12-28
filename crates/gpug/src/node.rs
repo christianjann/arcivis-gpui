@@ -40,10 +40,10 @@ impl Render for GpugNode {
             .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
-        // Right port (outgoing) - positioned as sibling after node so it renders on top
+        // Right port (outgoing) - positioned relative to right edge so it stays at node edge
         let right_port = div()
             .absolute()
-            .left(px((base_width - port_size / 2.0) * self.zoom))
+            .right(px(-port_size / 2.0 * self.zoom))
             .top(px((base_height - port_size) / 2.0 * self.zoom))
             .size(px(port_size * self.zoom))
             .bg(rgb(0xff8844))
@@ -51,9 +51,8 @@ impl Render for GpugNode {
             .border_color(border_color)
             .rounded(px(2.0 * self.zoom));
         
-        // Node body (rendered first, so ports appear on top)
+        // Node body (not absolute - determines container size)
         let node_body = div()
-            .absolute()
             .min_w(px(base_width * self.zoom))
             .h(px(base_height * self.zoom))
             .px(px(12.0 * self.zoom))
@@ -72,10 +71,8 @@ impl Render for GpugNode {
         // Container for node + ports with interaction handlers
         let node_container = div()
             .relative()
-            .min_w(px(base_width * self.zoom))
-            .h(px(base_height * self.zoom))
             .cursor_move()
-            // Node body first, then ports on top
+            // Node body first (determines container size), then ports on top
             .child(node_body)
             .child(left_port)
             .child(right_port)
