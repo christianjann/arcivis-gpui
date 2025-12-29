@@ -53,6 +53,7 @@ pub fn generate_nodes(n: usize) -> Vec<GraphNode> {
             height: 32.0,
             node_type: "node".to_string(),
             children: Vec::new(),
+            span: None,
         });
     }
     nodes

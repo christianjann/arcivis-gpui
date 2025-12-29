@@ -49,6 +49,15 @@ pub struct Graph {
     pub layout_mode: LayoutMode,
 }
 
+/// Event emitted when a node is selected in the graph
+#[derive(Clone, Debug)]
+pub struct NodeSelected {
+    pub node_id: u64,
+    pub span: Option<(usize, usize)>,
+}
+
+impl EventEmitter<NodeSelected> for Graph {}
+
 impl Graph {
     pub fn new(
         cx: &mut App,
@@ -976,9 +985,11 @@ impl Render for Graph {
                                 }
                             }
                             let target = this.nodes[i].clone();
+                            let (node_id, span) = cx.read_entity(&target, |node, _| (node.id, node.span));
                             cx.update_entity(&target, |node, _| {
                                 node.selected = true;
                             });
+                            cx.emit(NodeSelected { node_id, span });
                         }
                         None => {
                             // No node hit - start panning

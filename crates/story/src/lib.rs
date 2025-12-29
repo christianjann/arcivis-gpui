@@ -209,8 +209,9 @@ pub fn init(cx: &mut App) {
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("gpui_component=trace".parse().unwrap()),
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive("info".parse().unwrap())
+                .from_env_lossy(),
         )
         .init();
 

@@ -30,6 +30,8 @@ pub struct GraphNode {
     pub height: f32,
     // Child elements (partitions, swcs)
     pub children: Vec<NodeChild>,
+    /// Byte range in the source document for this node (start, end)
+    pub span: Option<(usize, usize)>,
 }
 
 impl GraphNode {

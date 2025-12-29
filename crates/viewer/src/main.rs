@@ -7,8 +7,8 @@ use gpui_component::{
 };
 use gpui_component_assets::Assets;
 use gpui_component_story::Open;
-use graphview::{EdgeRouting, Graph};
-use tracing::error;
+use graphview::{EdgeRouting, Graph, NodeSelected};
+use tracing::{info, error};
 
 mod kdl;
 use kdl::parse_kdl_model;
@@ -17,6 +17,24 @@ pub struct Example {
     input_state: Entity<InputState>,
     graph: Entity<Graph>,
     _subscriptions: Vec<Subscription>,
+}
+
+/// Convert line and character position to byte offset in the text
+fn line_char_to_offset(text: &str, line: usize, character: usize) -> usize {
+    let mut current_line = 0;
+    let mut current_char = 0;
+    for (i, ch) in text.char_indices() {
+        if current_line == line && current_char == character {
+            return i;
+        }
+        if ch == '\n' {
+            current_line += 1;
+            current_char = 0;
+        } else {
+            current_char += 1;
+        }
+    }
+    text.len() // if beyond the text
 }
 
 const EXAMPLE: &str = include_str!("../tests/model/vehicle.kdl");
@@ -53,9 +71,13 @@ impl Example {
 
         // Subscribe to input changes and update the graph
         let graph_for_sub = graph.clone();
+        let input_state_for_graph = input_state.clone();
         let _subscriptions =
             vec![
                 cx.subscribe(&input_state, move |_this, input, event: &InputEvent, cx| {
+                    info!("Input event received");
+                    let pos = input.read(cx).cursor_position();
+                    info!("Cursor position: line={}, character={}", pos.line, pos.character);
                     if let InputEvent::Change = event {
                         let content = input.read(cx).value();
                         let (nodes, edges) = parse_kdl_model(&content);
@@ -63,10 +85,39 @@ impl Example {
                         if !nodes.is_empty() {
                             graph_for_sub.update(cx, |graph, cx| {
                                 graph.update_model(nodes, edges, cx);
+                                // After updating, select the node at the current cursor position
+                                let cursor = line_char_to_offset(&content, pos.line as usize, pos.character as usize);
+                                info!("Cursor at byte position: {}", cursor);
+                                for node_entity in &graph.nodes {
+                                    let span = cx.read_entity(node_entity, |n, _| n.span);
+                                    if let Some((s, e)) = span {
+                                        if s <= cursor && cursor < e {
+                                            // Deselect all
+                                            for n in &graph.nodes {
+                                                cx.update_entity(n, |node, _| node.selected = false);
+                                            }
+                                            // Select this one
+                                            let node_name = cx.read_entity(node_entity, |n, _| n.name.clone());
+                                            cx.update_entity(node_entity, |node, _| node.selected = true);
+                                            info!("Selected node: {}", node_name);
+                                            break;
+                                        }
+                                    }
+                                }
                             });
                         } else {
                             error!("Document has errors, not updating graph!")
                         }
+                    }
+                }),
+                cx.subscribe(&graph, move |_this, _graph, event: &NodeSelected, cx| {
+                    info!("Node selected in graph: id={}, span={:?}", event.node_id, event.span);
+                    // Set text selection to event.span
+                    if let Some((start, end)) = event.span {
+                        info!("Setting text selection to {}..{}", start, end);
+                        input_state_for_graph.update(cx, |input, cx| {
+                            input.set_selection_range(start, end, cx);
+                        });
                     }
                 }),
             ];

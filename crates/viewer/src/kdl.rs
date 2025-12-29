@@ -32,6 +32,7 @@ pub fn parse_kdl_model(content: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
         children: Vec<NodeChild>,
         estimated_width: f32,
         estimated_height: f32,
+        span: Option<(usize, usize)>,
     }
 
     let mut bus_nodes: Vec<NodeInfo> = Vec::new();
@@ -67,12 +68,19 @@ pub fn parse_kdl_model(content: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
             let (estimated_width, estimated_height) =
                 GraphNode::estimate_node_size(&name, &type_val, &children);
 
+            // Try to get span/position from the KDL node (if available)
+            let s = kdl_node.span();
+            let start = s.offset();
+            let end = start + s.len();
+            let span = Some((start, end));
+
             let info = NodeInfo {
                 name,
                 node_type: type_val.clone(),
                 children,
                 estimated_width,
                 estimated_height,
+                span,
             };
 
             match type_val.as_str() {
@@ -101,6 +109,7 @@ pub fn parse_kdl_model(content: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
             container_offset: point(px(0.0), px(0.0)),
             width: info.estimated_width,
             height: info.estimated_height,
+            span: info.span,
         });
         bus_x += info.estimated_width + gap;
         id += 1;
@@ -123,6 +132,7 @@ pub fn parse_kdl_model(content: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
             container_offset: point(px(0.0), px(0.0)),
             width: info.estimated_width,
             height: info.estimated_height,
+            span: info.span,
         });
         ecu_x += info.estimated_width + gap;
         id += 1;

@@ -78,6 +78,9 @@ BodyController type="ecu" {
     interface bus="CAN"
 }
 ```
+## Known issues
+- When maximizing the window the cursor stays in resize mode outside the original window area unit first manual resize of the window
+- Sometimes the draping cursor is stuck at dragging, what helps is a right or middle click of the mouse
 
 ## License
 
