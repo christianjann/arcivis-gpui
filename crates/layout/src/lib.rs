@@ -13,6 +13,29 @@ pub struct Position {
     pub y: f64,
 }
 
+#[derive(Debug)]
+pub enum LayoutError {
+    InvalidNodeIndex,
+    InvalidEdgeIndex,
+    LayoutFailed(String),
+}
+
+/// Trait for layout-compatible data structures
+pub trait LayoutNode {
+    fn position(&self) -> Position;
+    fn size(&self) -> Size;
+    fn set_position(&mut self, pos: Position);
+    fn id(&self) -> String;
+    fn ports(&self) -> Vec<Port>;
+}
+
+/// Trait for layout-compatible edge structures
+pub trait LayoutEdge {
+    fn source(&self) -> usize;
+    fn target(&self) -> usize;
+    fn set_path(&mut self, path: Vec<Position>);
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PortType {
     Input,
@@ -50,6 +73,7 @@ pub struct LayoutResult {
     pub canvas_height: f64,
 }
 
+#[derive(Clone)]
 pub struct CustomLayout {
     pub iterations: usize,
     pub repulsion_strength: f64,
@@ -70,6 +94,42 @@ impl Default for CustomLayout {
             spaced_edges: false,
         }
     }
+}
+
+/// In-place layout method that modifies existing data
+pub fn layout_in_place<N: LayoutNode, E: LayoutEdge>(
+    nodes: &mut [N],
+    edges: &mut [E],
+    config: &CustomLayout,
+) -> Result<(), LayoutError> {
+    // Convert to internal format
+    let internal_nodes: Vec<Node> = nodes
+        .iter()
+        .map(|n| Node {
+            id: n.id(),
+            position: n.position(),
+            size: n.size(),
+            ports: n.ports(),
+            attributes: vec![],
+        })
+        .collect();
+
+    let internal_edges: Vec<(usize, usize)> =
+        edges.iter().map(|e| (e.source(), e.target())).collect();
+
+    // Run layout
+    let result = config.layout(internal_nodes, internal_edges);
+
+    // Update original data
+    for (i, node) in result.nodes.into_iter().enumerate() {
+        nodes[i].set_position(node.position);
+    }
+
+    for (i, edge) in result.edges.into_iter().enumerate() {
+        edges[i].set_path(edge.path);
+    }
+
+    Ok(())
 }
 
 struct Grid {
@@ -275,6 +335,50 @@ impl CustomLayout {
         }
     }
 
+    /// In-place layout method that modifies existing data structures
+    pub fn layout_in_place<N: LayoutNode, E: LayoutEdge>(
+        &self,
+        nodes: &mut [N],
+        edges: &mut [E],
+    ) -> Result<(), LayoutError> {
+        // Convert to internal format
+        let internal_nodes: Vec<Node> = nodes
+            .iter()
+            .map(|n| Node {
+                id: n.id(),
+                position: n.position(),
+                size: n.size(),
+                ports: n.ports(),
+                attributes: vec![],
+            })
+            .collect();
+
+        let internal_edges: Vec<(usize, usize)> =
+            edges.iter().map(|e| (e.source(), e.target())).collect();
+
+        // Run layout
+        let result = self.layout(internal_nodes, internal_edges);
+
+        // Update original data in-place
+        for (i, node) in result.nodes.into_iter().enumerate() {
+            if i < nodes.len() {
+                nodes[i].set_position(node.position);
+            } else {
+                return Err(LayoutError::InvalidNodeIndex);
+            }
+        }
+
+        for (i, edge) in result.edges.into_iter().enumerate() {
+            if i < edges.len() {
+                edges[i].set_path(edge.path);
+            } else {
+                return Err(LayoutError::InvalidEdgeIndex);
+            }
+        }
+
+        Ok(())
+    }
+
     fn initial_placement(&self, nodes: &mut [Node], edges: &[(usize, usize)]) {
         // Simple clustering based on connectivity
         let mut clusters: Vec<Vec<usize>> = Vec::new();
@@ -422,7 +526,9 @@ impl CustomLayout {
             // Calculate direction for source based on port side
             let source_side = if (source_pos.x - source_node.position.x).abs() < 10.0 {
                 "left"
-            } else if (source_pos.x - (source_node.position.x + source_node.size.width)).abs() < 10.0 {
+            } else if (source_pos.x - (source_node.position.x + source_node.size.width)).abs()
+                < 10.0
+            {
                 "right"
             } else if (source_pos.y - source_node.position.y).abs() < 10.0 {
                 "top"
@@ -448,12 +554,15 @@ impl CustomLayout {
                 y: source_ext_y,
             };
 
-            let source_ext_end = nearest_grid(&source_ext_end, grid.origin_x, grid.origin_y, cell_size);
-            
+            let source_ext_end =
+                nearest_grid(&source_ext_end, grid.origin_x, grid.origin_y, cell_size);
+
             // Calculate direction for target based on port side
             let target_side = if (target_pos.x - target_node.position.x).abs() < 10.0 {
                 "left"
-            } else if (target_pos.x - (target_node.position.x + target_node.size.width)).abs() < 10.0 {
+            } else if (target_pos.x - (target_node.position.x + target_node.size.width)).abs()
+                < 10.0
+            {
                 "right"
             } else if (target_pos.y - target_node.position.y).abs() < 10.0 {
                 "top"
@@ -479,7 +588,8 @@ impl CustomLayout {
                 y: target_ext_y,
             };
 
-            let target_ext_end = nearest_grid(&target_ext_end, grid.origin_x, grid.origin_y, cell_size);
+            let target_ext_end =
+                nearest_grid(&target_ext_end, grid.origin_x, grid.origin_y, cell_size);
 
             let source_ext_grid = grid.pos_to_grid(&source_ext_end);
             grid.obstacles[source_ext_grid.1][source_ext_grid.0] = false;
@@ -494,10 +604,13 @@ impl CustomLayout {
 
             // Debug: check for diagonal segments
             for i in 1..full_path.len() {
-                let p1 = &full_path[i-1];
+                let p1 = &full_path[i - 1];
                 let p2 = &full_path[i];
                 if p1.x != p2.x && p1.y != p2.y {
-                    println!("WARNING: Diagonal segment calculated: ({}, {}) to ({}, {})", p1.x, p1.y, p2.x, p2.y);
+                    println!(
+                        "WARNING: Diagonal segment calculated: ({}, {}) to ({}, {})",
+                        p1.x, p1.y, p2.x, p2.y
+                    );
                 }
             }
 
@@ -2586,5 +2699,105 @@ mod integration_tests {
         }
 
         generate_svg(&result, "test_set_5.svg", true, true);
+    }
+
+    #[test]
+    fn test_layout_in_place() {
+        // Create test data structures that implement the traits
+        #[derive(Debug, Clone)]
+        struct TestNode {
+            id: String,
+            position: Position,
+            size: Size,
+            ports: Vec<Port>,
+        }
+
+        impl LayoutNode for TestNode {
+            fn position(&self) -> Position {
+                self.position.clone()
+            }
+            fn size(&self) -> Size {
+                self.size.clone()
+            }
+            fn set_position(&mut self, pos: Position) {
+                self.position = pos;
+            }
+            fn id(&self) -> String {
+                self.id.clone()
+            }
+            fn ports(&self) -> Vec<Port> {
+                self.ports.clone()
+            }
+        }
+
+        #[derive(Debug, Clone)]
+        struct TestEdge {
+            source: usize,
+            target: usize,
+            path: Vec<Position>,
+        }
+
+        impl LayoutEdge for TestEdge {
+            fn source(&self) -> usize {
+                self.source
+            }
+            fn target(&self) -> usize {
+                self.target
+            }
+            fn set_path(&mut self, path: Vec<Position>) {
+                self.path = path;
+            }
+        }
+
+        // Create test nodes and edges with closer initial positions
+        let mut nodes = vec![
+            TestNode {
+                id: "A".to_string(),
+                position: Position { x: 0.0, y: 0.0 },
+                size: Size {
+                    width: 100.0,
+                    height: 50.0,
+                },
+                ports: vec![],
+            },
+            TestNode {
+                id: "B".to_string(),
+                position: Position { x: 50.0, y: 0.0 }, // Closer together
+                size: Size {
+                    width: 100.0,
+                    height: 50.0,
+                },
+                ports: vec![],
+            },
+        ];
+
+        let mut edges = vec![TestEdge {
+            source: 0,
+            target: 1,
+            path: vec![],
+        }];
+
+        // Create layout configuration with more iterations
+        let config = CustomLayout {
+            iterations: 100,
+            repulsion_strength: 10000.0,
+            attraction_strength: 0.01,
+            min_spacing: 50.0,
+            allow_diagonals: true,
+            spaced_edges: true,
+        };
+
+        // Run in-place layout
+        let result = layout_in_place(&mut nodes, &mut edges, &config);
+
+        // Verify the result
+        assert!(result.is_ok());
+
+        // Check that positions have been updated (should move apart due to repulsion)
+        assert_ne!(nodes[0].position.x, 0.0);
+        assert_ne!(nodes[1].position.x, 50.0); // Should move away from each other
+
+        // Check that edge path has been set
+        assert!(!edges[0].path.is_empty());
     }
 }

@@ -40,6 +40,54 @@ let edges = vec![
 let graph = cx.new(|cx| Graph::new(cx, nodes, edges, 4, 0.3));
 ```
 
+## Coordinate System Details
+
+**Layout Crate Coordinate System:**
+- Uses `f64` abstract units (no physical meaning)
+- Origin at (0,0) with positive X right, positive Y down
+- Grid-aligned positioning (multiples of 5.0 units)
+- Layout results are centered and scaled to fit canvas
+
+**GPUI/Graphview Coordinate System:**
+- Uses `Pixels` (physical screen units)
+- Supports zoom and pan transformations
+- Origin can be anywhere (affected by pan)
+- Coordinates: `screen_pos = pan + world_pos * zoom`
+
+**Integration Challenges:**
+1. **Unit Conversion**: Layout crate uses abstract units, GPUI uses pixels
+2. **Zoom Handling**: Layout results need scaling for different zoom levels
+3. **Origin Offset**: Layout crate centers results, GPUI has arbitrary origins
+4. **Real-time Updates**: Layout is batch operation, GPUI needs incremental updates
+
+**Recommended Integration:**
+```rust
+// Convert GPUI pixels to layout units
+let layout_units_per_pixel = 1.0 / zoom_factor;
+let layout_nodes = gpui_nodes.iter().map(|node| {
+    LayoutNode {
+        position: Position {
+            x: (node.x - pan.x) / zoom_factor / layout_units_per_pixel,
+            y: (node.y - pan.y) / zoom_factor / layout_units_per_pixel,
+        },
+        size: Size {
+            width: node.width / layout_units_per_pixel,
+            height: node.height / layout_units_per_pixel,
+        },
+        // ... other fields
+    }
+});
+
+// Run layout
+layout.layout_in_place(&mut layout_nodes, &mut layout_edges)?;
+
+// Convert back to GPUI coordinates
+for (gpui_node, layout_node) in gpui_nodes.iter_mut().zip(layout_nodes) {
+    gpui_node.x = pan.x + layout_node.position.x * layout_units_per_pixel * zoom_factor;
+    gpui_node.y = pan.y + layout_node.position.y * layout_units_per_pixel * zoom_factor;
+}
+```
+
 ## Dependencies
 
 - [GPUI](https://gpui.rs/) - GPU-accelerated UI framework

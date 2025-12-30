@@ -53,7 +53,53 @@ The layout algorithm operates in four distinct phases to produce clean, readable
 - **Centering**: Translates the entire layout to center it within the canvas
 - **Path Optimization**: Ensures all edge paths are orthogonal (horizontal/vertical only)
 
+## API Options
+
+The crate provides two API approaches for different use cases:
+
+### Ownership-Based API
+```rust
+let layout = CustomLayout::default();
+let result = layout.layout(nodes, edges);
+// Returns new LayoutResult with positioned nodes and routed edges
+```
+
+### In-Place API
+```rust
+let layout = CustomLayout::default();
+layout.layout_in_place(&mut nodes, &mut edges)?;
+// Modifies existing data structures directly
+```
+
+**When to use each:**
+- **Ownership API**: When you need a complete snapshot or are working with immutable data
+- **In-Place API**: When performance matters and you want to avoid copying large datasets
+
 ## Design
+
+### Core Components
+
+- **Node**: Represents a graph vertex with position, size, and optional ports
+- **Edge**: Represents a graph connection with source/target indices and routed waypoints
+- **Port**: Optional connection points on nodes (up to 8 per node) with input/output types
+- **Grid**: Discrete spatial partitioning system for pathfinding and collision detection
+
+### Key Features
+
+- **Orthogonal Edge Routing**: All edges follow horizontal and vertical paths only
+- **Port-Aware Connections**: Intelligent port selection based on connection direction
+- **Obstacle Avoidance**: Automatic routing around nodes and other edges
+- **Force-Directed Layout**: Physics-based node positioning for natural-looking layouts
+- **Configurable Parameters**: Adjustable forces, spacing, and iteration counts
+- **Grid-Snapping**: Positions are snapped to a 5-unit grid for consistency
+
+### Technical Details
+
+- **Grid Cell Size**: 5.0 units (configurable)
+- **Extension Distance**: 25.0 units from ports before routing
+- **Pathfinding**: Breadth-First Search (BFS) on orthogonal grid
+- **Force Iterations**: Default 100 iterations for convergence
+- **Minimum Spacing**: 20.0 units between nodes
 
 ### Core Components
 
