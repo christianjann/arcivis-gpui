@@ -1,6 +1,6 @@
 [package]
-name = "graphview"
-version = "0.1.0"
+name = "archviz-graphview"
+version.workspace = true
 authors = [
     "jerlendds <oss@osintbuddy.com>",
     "Christian Jann <christian.jann@ymail.com>",
@@ -20,9 +20,9 @@ doctest = false
 dagre-rs.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
-petgraph = "0.8.3"
-archviz-layout = { path = "../layout" }
+petgraph.workspace = true
 tracing.workspace = true
+archviz-layout = { path = "../layout" }
 
 [[example]]
 name = "kitchen_sink"

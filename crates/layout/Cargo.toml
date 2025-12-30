@@ -1,16 +1,16 @@
 [package]
 name = "archviz-layout"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-petgraph = "0.6"
-rand = "0.8"
+serde.workspace = true
+petgraph.workspace = true
+rand.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-svg = "0.13"
+svg.workspace = true
 tracing-test.workspace = true
