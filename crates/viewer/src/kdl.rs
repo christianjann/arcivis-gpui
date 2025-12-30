@@ -110,6 +110,7 @@ pub fn parse_kdl_model(content: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
             width: info.estimated_width,
             height: info.estimated_height,
             span: info.span,
+            graph_entity: None,
         });
         bus_x += info.estimated_width + gap;
         id += 1;
@@ -133,6 +134,7 @@ pub fn parse_kdl_model(content: &str) -> (Vec<GraphNode>, Vec<GraphEdge>) {
             width: info.estimated_width,
             height: info.estimated_height,
             span: info.span,
+            graph_entity: None,
         });
         ecu_x += info.estimated_width + gap;
         id += 1;

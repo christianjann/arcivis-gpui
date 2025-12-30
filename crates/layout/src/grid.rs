@@ -1,6 +1,7 @@
 use crate::types::*;
 use std::collections::{HashMap, VecDeque};
 
+#[derive(Clone, Debug)]
 pub struct Grid {
     pub cell_size: f64,
     pub origin_x: f64,
@@ -28,22 +29,27 @@ impl Grid {
             .iter()
             .map(|n| n.position.y + n.size.height)
             .fold(f64::NEG_INFINITY, f64::max);
-        let canvas_width = (max_x - min_x + 100.0).max(400.0);
-        let canvas_height = (max_y - min_y + 100.0).max(300.0);
+        let canvas_width = (max_x - min_x + 200.0).max(400.0);
+        let canvas_height = (max_y - min_y + 200.0).max(300.0);
         let width = (canvas_width / cell_size).ceil() as usize + 1;
         let height = (canvas_height / cell_size).ceil() as usize + 1;
         let mut obstacles = vec![vec![false; width]; height];
 
         for node in nodes {
-            let x1 = ((node.position.x - 7.0 - min_x) / cell_size).floor() as usize;
-            let y1 = ((node.position.y - 7.0 - min_y) / cell_size).floor() as usize;
-            let x2 =
-                ((node.position.x + node.size.width + 7.0 - min_x) / cell_size).ceil() as usize;
-            let y2 =
-                ((node.position.y + node.size.height + 7.0 - min_y) / cell_size).ceil() as usize;
+            let x1 = ((node.position.x - 15.0 - (min_x - 50.0)) / cell_size).floor() as i32;
+            let y1 = ((node.position.y - 15.0 - (min_y - 50.0)) / cell_size).floor() as i32;
+            let x2 = ((node.position.x + node.size.width + 15.0 - (min_x - 50.0)) / cell_size)
+                .ceil() as i32;
+            let y2 = ((node.position.y + node.size.height + 15.0 - (min_y - 50.0)) / cell_size)
+                .ceil() as i32;
 
-            for y in y1..y2.min(height) {
-                for x in x1..x2.min(width) {
+            let x1_clamped = x1.max(0) as usize;
+            let y1_clamped = y1.max(0) as usize;
+            let x2_clamped = x2.min(width as i32) as usize;
+            let y2_clamped = y2.min(height as i32) as usize;
+
+            for y in y1_clamped..y2_clamped {
+                for x in x1_clamped..x2_clamped {
                     obstacles[y][x] = true;
                 }
             }
@@ -52,19 +58,23 @@ impl Grid {
         // Block port areas
         for node in nodes {
             for port in &node.ports {
-                let port_x1 =
-                    (((node.position.x + port.position.x - min_x) / cell_size).floor() as i32 - 2)
-                        .max(0) as usize;
-                let port_y1 =
-                    (((node.position.y + port.position.y - min_y) / cell_size).floor() as i32 - 2)
-                        .max(0) as usize;
-                let port_x2 = (((node.position.x + port.position.x + port.size.width - min_x)
+                let port_x1 = (((node.position.x + port.position.x - (min_x - 50.0)) / cell_size)
+                    .floor() as i32
+                    - 2)
+                .max(0) as usize;
+                let port_y1 = (((node.position.y + port.position.y - (min_y - 50.0)) / cell_size)
+                    .floor() as i32
+                    - 2)
+                .max(0) as usize;
+                let port_x2 = (((node.position.x + port.position.x + port.size.width
+                    - (min_x - 50.0))
                     / cell_size)
                     .ceil() as i32
                     + 2)
                 .min((width - 1) as i32) as usize
                     + 1;
-                let port_y2 = (((node.position.y + port.position.y + port.size.height - min_y)
+                let port_y2 = (((node.position.y + port.position.y + port.size.height
+                    - (min_y - 50.0))
                     / cell_size)
                     .ceil() as i32
                     + 2)
@@ -81,8 +91,8 @@ impl Grid {
 
         Grid {
             cell_size,
-            origin_x: min_x,
-            origin_y: min_y,
+            origin_x: min_x - 50.0,
+            origin_y: min_y - 50.0,
             width,
             height,
             obstacles,

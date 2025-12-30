@@ -49,6 +49,10 @@ pub struct Graph {
     pub edge_routing: EdgeRouting,
     /// Layout algorithm mode
     pub layout_mode: LayoutMode,
+    /// Subscriptions to node events
+    node_subscriptions: Vec<Subscription>,
+    /// Track if nodes are currently being dragged (for ArchViz performance)
+    pub is_dragging_nodes: bool,
 }
 
 /// Event emitted when a node is selected in the graph
@@ -58,7 +62,13 @@ pub struct NodeSelected {
     pub span: Option<(usize, usize)>,
 }
 
+#[derive(Clone, Debug)]
+pub struct NodeMoved {
+    pub node_id: u64,
+}
+
 impl EventEmitter<NodeSelected> for Graph {}
+impl EventEmitter<NodeMoved> for Graph {}
 
 impl Graph {
     pub fn new(
@@ -96,6 +106,8 @@ impl Graph {
             pan_start_pos: point(px(0.0), px(0.0)),
             edge_routing: EdgeRouting::default(),
             layout_mode: LayoutMode::default(),
+            node_subscriptions: Vec::new(),
+            is_dragging_nodes: false,
         }
     }
 
@@ -172,15 +184,32 @@ impl Graph {
     ) {
         // Create new node entities
         let mut node_entities: Vec<Entity<GraphNode>> = Vec::with_capacity(nodes.len());
+        let mut subscriptions = Vec::new();
+        let graph_entity = cx.entity();
+
         for mut node in nodes {
             node.zoom = self.zoom;
             node.pan = self.pan;
             node.container_offset = self.container_offset;
-            node_entities.push(cx.new(|_| node));
+            node.graph_entity = Some(graph_entity.clone());
+            let node_entity = cx.new(|_| node);
+
+            // Subscribe to NodeMoved events from this node
+            let subscription = cx.subscribe(
+                &node_entity,
+                |_this: &mut Graph, _node, _event: &NodeMoved, cx| {
+                    // When a node is moved, handle it
+                    cx.notify();
+                },
+            );
+            subscriptions.push(subscription);
+
+            node_entities.push(node_entity);
         }
 
         self.nodes = node_entities;
         self.edges = edges;
+        self.node_subscriptions = subscriptions;
         self.needs_layout = true;
         cx.notify();
     }
@@ -199,6 +228,38 @@ impl Graph {
             });
         }
         cx.notify();
+    }
+
+    /// Handle a node being moved
+    pub fn handle_node_moved(&mut self, _node_id: u64, cx: &mut Context<Self>) {
+        if self.layout_mode == LayoutMode::ArchViz {
+            // During dragging, just clear paths to use fast Manhattan routing
+            // We'll recalculate ArchViz routes when dragging stops
+            for edge in &mut self.edges {
+                edge.path.clear();
+            }
+            cx.notify();
+        }
+    }
+
+    /// Handle when node dragging starts
+    pub fn handle_drag_started(&mut self, cx: &mut Context<Self>) {
+        self.is_dragging_nodes = true;
+        cx.notify();
+    }
+
+    /// Handle when node dragging ends - recalculate ArchViz routes
+    pub fn handle_drag_ended(&mut self, cx: &mut Context<Self>) {
+        self.is_dragging_nodes = false;
+        if self.layout_mode == LayoutMode::ArchViz {
+            // Defer the expensive recalculation to avoid entity conflicts
+            let graph_entity = cx.entity();
+            cx.defer(move |cx| {
+                cx.update_entity(&graph_entity, |graph, cx| {
+                    graph.recalculate_archviz_edges(cx);
+                });
+            });
+        }
     }
 
     /// Fit all nodes into the visible area
@@ -369,8 +430,101 @@ impl Graph {
         cx.notify();
     }
 
+    /// Recalculate edge paths using ArchViz orthogonal routing with current node positions
+    pub fn recalculate_archviz_edges(&mut self, cx: &mut Context<Self>) {
+        use archviz_layout::{CustomLayout, Node, Port, PortType, Position, Size};
+
+        let n = self.nodes.len();
+        if n == 0 {
+            return;
+        }
+
+        // Convert GraphNode entities to archviz-layout Node structs using CURRENT positions
+        let mut layout_nodes: Vec<Node> = Vec::with_capacity(n);
+        for node_entity in self.nodes.iter() {
+            let (name, width, height, x, y) = cx.read_entity(node_entity, |node, _| {
+                (
+                    node.name.clone(),
+                    node.width,
+                    node.height,
+                    (node.x / px(1.0)) as f32,
+                    (node.y / px(1.0)) as f32,
+                )
+            });
+
+            // Define ports: left (input) and right (output)
+            let header_height = 28.0f64;
+            let port_y = header_height / 2.0;
+            let ports = vec![
+                Port {
+                    position: Position { x: 0.0, y: port_y }, // Left port
+                    size: Size {
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                    port_type: PortType::Input,
+                    id: None,
+                },
+                Port {
+                    position: Position {
+                        x: width as f64,
+                        y: port_y,
+                    }, // Right port
+                    size: Size {
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                    port_type: PortType::Output,
+                    id: None,
+                },
+            ];
+
+            // Use CURRENT node position, don't let layout reposition
+            let node = Node {
+                id: name.clone(),
+                size: Size {
+                    width: width as f64,
+                    height: height as f64,
+                },
+                position: Position {
+                    x: x as f64,
+                    y: y as f64,
+                }, // Keep current position
+                ports,
+                attributes: vec![],
+            };
+            layout_nodes.push(node);
+        }
+
+        // Convert GraphEdge to edge tuples
+        let layout_edges: Vec<(usize, usize, Option<usize>, Option<usize>)> = self
+            .edges
+            .iter()
+            .filter(|edge| edge.source < n && edge.target < n)
+            .map(|edge| (edge.source, edge.target, Some(0), Some(0)))
+            .collect();
+
+        // Run the archviz layout algorithm with fixed positions
+        let layout = CustomLayout::default();
+        let routed_edges = layout.route_edges_only(&layout_nodes, &layout_edges);
+
+        // Only update edge paths, don't move nodes
+        for (i, edge) in self.edges.iter_mut().enumerate() {
+            if i < routed_edges.len() {
+                let layout_edge = &routed_edges[i];
+                edge.path = layout_edge
+                    .path
+                    .iter()
+                    .map(|p| (p.x as f32, p.y as f32))
+                    .collect();
+            }
+        }
+
+        cx.notify();
+    }
+
     pub fn apply_archviz_layout(&mut self, cx: &mut Context<Self>) {
-        use archviz_layout::{CustomLayout, Node, Size, Position};
+        use archviz_layout::{CustomLayout, Node, Port, PortType, Position, Size};
 
         let n = self.nodes.len();
         if n == 0 {
@@ -379,10 +533,42 @@ impl Graph {
 
         // Convert GraphNode entities to archviz-layout Node structs
         let mut layout_nodes: Vec<Node> = Vec::with_capacity(n);
-        for node_entity in &self.nodes {
+        for (i, node_entity) in self.nodes.iter().enumerate() {
             let (name, width, height) = cx.read_entity(node_entity, |node, _| {
                 (node.name.clone(), node.width, node.height)
             });
+
+            println!(
+                "Node {}: name={}, width={}, height={}",
+                i, name, width, height
+            );
+
+            // Define ports: left (input) and right (output)
+            let header_height = 28.0f64;
+            let port_y = header_height / 2.0;
+            let ports = vec![
+                Port {
+                    position: Position { x: 0.0, y: port_y }, // Left port
+                    size: Size {
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                    port_type: PortType::Input,
+                    id: None,
+                },
+                Port {
+                    position: Position {
+                        x: width as f64,
+                        y: port_y,
+                    }, // Right port
+                    size: Size {
+                        width: 10.0,
+                        height: 10.0,
+                    },
+                    port_type: PortType::Output,
+                    id: None,
+                },
+            ];
 
             // Create basic node with default position (layout will reposition)
             let node = Node {
@@ -392,21 +578,37 @@ impl Graph {
                     height: height as f64,
                 },
                 position: Position { x: 0.0, y: 0.0 }, // Layout will set proper positions
-                ports: vec![], // No ports for now
+                ports,
                 attributes: vec![],
             };
             layout_nodes.push(node);
         }
 
         // Convert GraphEdge to edge tuples
-        let layout_edges: Vec<(usize, usize)> = self.edges.iter()
+        let layout_edges: Vec<(usize, usize, Option<usize>, Option<usize>)> = self
+            .edges
+            .iter()
             .filter(|edge| edge.source < n && edge.target < n)
-            .map(|edge| (edge.source, edge.target))
+            .map(|edge| (edge.source, edge.target, Some(0), Some(0)))
             .collect();
 
         // Run the archviz layout algorithm
         let layout = CustomLayout::default();
         let result = layout.layout(layout_nodes, layout_edges);
+
+        //print!("{:?}", &result);
+        // Generate SVG for debugging
+        use archviz_layout::generate_svg;
+        generate_svg(&result, "archviz_layout.svg", true, true);
+        println!("Generated SVG: archviz_layout.svg");
+
+        println!("Layout completed, result has {} nodes", result.nodes.len());
+        for (i, node) in result.nodes.iter().enumerate() {
+            println!(
+                "Result node {}: id={}, x={}, y={}, w={}, h={}",
+                i, node.id, node.position.x, node.position.y, node.size.width, node.size.height
+            );
+        }
 
         // Apply the resulting positions back to GraphNode entities
         let zoom = self.zoom;
@@ -414,12 +616,28 @@ impl Graph {
         for (i, node_entity) in self.nodes.iter().enumerate() {
             if i < result.nodes.len() {
                 let node = &result.nodes[i];
+                println!(
+                    "Layout result node {}: x={}, y={}",
+                    i, node.position.x, node.position.y
+                );
                 cx.update_entity(node_entity, |graph_node, _| {
                     graph_node.x = px(node.position.x as f32);
                     graph_node.y = px(node.position.y as f32);
                     graph_node.zoom = zoom;
                     graph_node.pan = pan;
                 });
+            }
+        }
+
+        // Update edge paths from layout result
+        for (i, edge) in self.edges.iter_mut().enumerate() {
+            if i < result.edges.len() {
+                let layout_edge = &result.edges[i];
+                edge.path = layout_edge
+                    .path
+                    .iter()
+                    .map(|p| (p.x as f32, p.y as f32))
+                    .collect();
             }
         }
 
@@ -495,7 +713,7 @@ impl Render for Graph {
         let pan = self.pan;
         let nodes = self.nodes.clone();
         let edges = self.edges.clone();
-        let edge_routing = self.edge_routing;
+        let layout_mode = self.layout_mode;
         let edges_canvas = canvas(
             |_bounds, _window, _cx| (),
             move |bounds, _state, window, cx| {
@@ -545,8 +763,7 @@ impl Render for Graph {
                 }
 
                 struct EdgeData {
-                    p1: Point<Pixels>,
-                    p2: Point<Pixels>,
+                    path: Vec<Point<Pixels>>, // Edge path points
                     selection: EdgeSelection,
                 }
 
@@ -558,74 +775,85 @@ impl Render for Graph {
                     if i >= nodes.len() || j >= nodes.len() {
                         continue;
                     }
-                    // Connect from source's right port to target's left port
-                    // Right port center: node.x + node.width (port extends past node edge)
-                    // Left port center: node.x (port extends before node edge)
-                    // Vertical: port_y_offset from top of node
-                    let (x1, y1, source_selected) = cx.read_entity(&nodes[i], |n, _| {
-                        (
-                            n.x + px(n.width),       // Right port center x
-                            n.y + px(port_y_offset), // Port vertical center
-                            n.selected,
-                        )
-                    });
-                    let (x2, y2, target_selected) = cx.read_entity(&nodes[j], |n, _| {
-                        (
-                            n.x,                     // Left port center x
-                            n.y + px(port_y_offset), // Port vertical center
-                            n.selected,
-                        )
-                    });
 
-                    // Offset by bounds.origin so edges are drawn relative to container
-                    let p1 = point(offset.x + pan.x + x1 * zoom, offset.y + pan.y + y1 * zoom);
-                    let p2 = point(offset.x + pan.x + x2 * zoom, offset.y + pan.y + y2 * zoom);
+                    let (source_selected, target_selected) = {
+                        let source_sel = cx.read_entity(&nodes[i], |n, _| n.selected);
+                        let target_sel = cx.read_entity(&nodes[j], |n, _| n.selected);
+                        (source_sel, target_sel)
+                    };
 
                     let selection = match (source_selected, target_selected) {
                         (true, true) => EdgeSelection::BothSelected,
-                        (true, false) => EdgeSelection::SourceSelected, // Outgoing from selected
-                        (false, true) => EdgeSelection::TargetSelected, // Incoming to selected
+                        (true, false) => EdgeSelection::SourceSelected,
+                        (false, true) => EdgeSelection::TargetSelected,
                         (false, false) => EdgeSelection::None,
                     };
 
-                    edge_data.push(EdgeData { p1, p2, selection });
-                }
+                    // Use stored path only for ArchViz mode, otherwise calculate ports dynamically
+                    let path_points: Vec<Point<Pixels>> =
+                        if layout_mode == LayoutMode::ArchViz && !edge.path.is_empty() {
+                            // Transform stored path to screen coordinates
+                            edge.path
+                                .iter()
+                                .map(|(x, y)| {
+                                    point(
+                                        offset.x + pan.x + px(*x) * zoom,
+                                        offset.y + pan.y + px(*y) * zoom,
+                                    )
+                                })
+                                .collect()
+                        } else {
+                            // Dynamic port-based routing for Force, Dagre, or when paths are invalid
+                            let (x1, y1) = cx.read_entity(&nodes[i], |n, _| {
+                                (n.x + px(n.width), n.y + px(port_y_offset))
+                            });
+                            let (x2, y2) =
+                                cx.read_entity(&nodes[j], |n, _| (n.x, n.y + px(port_y_offset)));
 
-                // Helper to draw edge segments based on routing
-                let draw_edge = |path: &mut gpui::Path<Pixels>,
-                                 p1: Point<Pixels>,
-                                 p2: Point<Pixels>,
-                                 half_thickness: f32| {
-                    match edge_routing {
-                        EdgeRouting::Straight => {
-                            draw_segment(path, p1, p2, half_thickness);
-                        }
-                        EdgeRouting::Manhattan => {
-                            // Route edges above nodes: right → up → horizontal → down → left
+                            // Apply Manhattan routing: right → up → horizontal → down → left
                             let clearance = px(30.0) * zoom; // Vertical clearance above nodes
                             let stub_len = px(15.0) * zoom; // Horizontal stub from port
 
                             // Stub out from source port (right)
-                            let s1 = point(p1.x + stub_len, p1.y);
+                            let s1 = point(x1 + stub_len, y1);
                             // Stub in to target port (left)
-                            let s2 = point(p2.x - stub_len, p2.y);
+                            let s2 = point(x2 - stub_len, y2);
 
                             // Route above - find the minimum y and go above it
-                            let min_y = p1.y.min(p2.y);
+                            let min_y = y1.min(y2);
                             let route_y = min_y - clearance;
 
                             // 5 segments: stub right, up, horizontal, down, stub left
                             let c1 = point(s1.x, route_y); // Up from source stub
                             let c2 = point(s2.x, route_y); // Horizontal to above target
 
-                            draw_segment(path, p1, s1, half_thickness); // Stub right
-                            draw_segment(path, s1, c1, half_thickness); // Up
-                            draw_segment(path, c1, c2, half_thickness); // Horizontal (above)
-                            draw_segment(path, c2, s2, half_thickness); // Down
-                            draw_segment(path, s2, p2, half_thickness); // Stub left
-                        }
-                    }
-                };
+                            vec![
+                                point(offset.x + pan.x + x1 * zoom, offset.y + pan.y + y1 * zoom), // Source port
+                                point(
+                                    offset.x + pan.x + s1.x * zoom,
+                                    offset.y + pan.y + s1.y * zoom,
+                                ), // Stub right
+                                point(
+                                    offset.x + pan.x + c1.x * zoom,
+                                    offset.y + pan.y + c1.y * zoom,
+                                ), // Up
+                                point(
+                                    offset.x + pan.x + c2.x * zoom,
+                                    offset.y + pan.y + c2.y * zoom,
+                                ), // Horizontal
+                                point(
+                                    offset.x + pan.x + s2.x * zoom,
+                                    offset.y + pan.y + s2.y * zoom,
+                                ), // Down
+                                point(offset.x + pan.x + x2 * zoom, offset.y + pan.y + y2 * zoom), // Target port
+                            ]
+                        };
+
+                    edge_data.push(EdgeData {
+                        path: path_points,
+                        selection,
+                    });
+                }
 
                 // Draw glow for selected edges first (underneath)
                 // Orange glow for outgoing, blue glow for incoming
@@ -634,10 +862,28 @@ impl Render for Graph {
                 for edge in &edge_data {
                     match edge.selection {
                         EdgeSelection::SourceSelected | EdgeSelection::BothSelected => {
-                            draw_edge(&mut outgoing_glow_path, edge.p1, edge.p2, thickness * 4.0);
+                            if edge.path.len() >= 2 {
+                                for i in 0..edge.path.len() - 1 {
+                                    draw_segment(
+                                        &mut outgoing_glow_path,
+                                        edge.path[i],
+                                        edge.path[i + 1],
+                                        thickness * 4.0,
+                                    );
+                                }
+                            }
                         }
                         EdgeSelection::TargetSelected => {
-                            draw_edge(&mut incoming_glow_path, edge.p1, edge.p2, thickness * 4.0);
+                            if edge.path.len() >= 2 {
+                                for i in 0..edge.path.len() - 1 {
+                                    draw_segment(
+                                        &mut incoming_glow_path,
+                                        edge.path[i],
+                                        edge.path[i + 1],
+                                        thickness * 4.0,
+                                    );
+                                }
+                            }
                         }
                         EdgeSelection::None => {}
                     }
@@ -649,7 +895,16 @@ impl Render for Graph {
                 let mut normal_path = gpui::Path::new(offset);
                 for edge in &edge_data {
                     if matches!(edge.selection, EdgeSelection::None) {
-                        draw_edge(&mut normal_path, edge.p1, edge.p2, thickness);
+                        if edge.path.len() >= 2 {
+                            for i in 0..edge.path.len() - 1 {
+                                draw_segment(
+                                    &mut normal_path,
+                                    edge.path[i],
+                                    edge.path[i + 1],
+                                    thickness,
+                                );
+                            }
+                        }
                     }
                 }
                 window.paint_path(normal_path, normal_color);
@@ -661,10 +916,28 @@ impl Render for Graph {
                 for edge in &edge_data {
                     match edge.selection {
                         EdgeSelection::SourceSelected | EdgeSelection::BothSelected => {
-                            draw_edge(&mut outgoing_path, edge.p1, edge.p2, thickness * 2.0);
+                            if edge.path.len() >= 2 {
+                                for i in 0..edge.path.len() - 1 {
+                                    draw_segment(
+                                        &mut outgoing_path,
+                                        edge.path[i],
+                                        edge.path[i + 1],
+                                        thickness * 2.0,
+                                    );
+                                }
+                            }
                         }
                         EdgeSelection::TargetSelected => {
-                            draw_edge(&mut incoming_path, edge.p1, edge.p2, thickness * 2.0);
+                            if edge.path.len() >= 2 {
+                                for i in 0..edge.path.len() - 1 {
+                                    draw_segment(
+                                        &mut incoming_path,
+                                        edge.path[i],
+                                        edge.path[i + 1],
+                                        thickness * 2.0,
+                                    );
+                                }
+                            }
                         }
                         EdgeSelection::None => {}
                     }
@@ -737,18 +1010,32 @@ impl Render for Graph {
                     graph_cx.listener(|this, _e: &gpui::MouseDownEvent, _w, cx| {
                         this.layout_mode = match this.layout_mode {
                             LayoutMode::Force => {
+                                // Clear stored paths when switching to Dagre
+                                for edge in &mut this.edges {
+                                    edge.path.clear();
+                                }
                                 // Apply dagre layout immediately when switching to it
                                 this.apply_dagre_layout(cx);
                                 this.playing = false; // Stop force simulation
                                 LayoutMode::Dagre
                             }
                             LayoutMode::Dagre => {
+                                // Clear stored paths when switching to ArchViz
+                                for edge in &mut this.edges {
+                                    edge.path.clear();
+                                }
                                 // Apply archviz layout immediately when switching to it
                                 this.apply_archviz_layout(cx);
                                 this.playing = false; // Stop force simulation
                                 LayoutMode::ArchViz
                             }
-                            LayoutMode::ArchViz => LayoutMode::Force,
+                            LayoutMode::ArchViz => {
+                                // Clear stored paths when switching back to Force
+                                for edge in &mut this.edges {
+                                    edge.path.clear();
+                                }
+                                LayoutMode::Force
+                            }
                         };
                         cx.notify();
                     }),
@@ -1190,7 +1477,9 @@ impl Render for Graph {
                     .justify_center()
                     .text_size(px(12.0))
                     .child(div().text_color(button_text_color).child(
-                        if self.layout_mode == LayoutMode::Dagre || self.layout_mode == LayoutMode::ArchViz {
+                        if self.layout_mode == LayoutMode::Dagre
+                            || self.layout_mode == LayoutMode::ArchViz
+                        {
                             "⟳" // Refresh/relayout icon for dagre and archviz
                         } else if self.playing {
                             "||" // Pause symbol (using ASCII for better visibility)

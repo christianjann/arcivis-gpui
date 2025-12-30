@@ -28,6 +28,11 @@ The library comes with 5 comprehensive test sets that demonstrate various layout
 ### Test Set 5: Automotive ECU Network with separate bus and Ethernet cluster entities
 ![](doc/test_set_5.svg)
 
+### Test Set 6: Test set with mush bigger nodes (from viewer example)
+![](doc/test_set_6.svg)
+
+> Note: Aditionally the forbidden routing area is marked red
+
 ## Algorithm
 
 The layout algorithm operates in four distinct phases to produce clean, readable graph layouts:

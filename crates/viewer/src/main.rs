@@ -71,6 +71,13 @@ impl Example {
             graph
         });
 
+        // Update the graph model to set up subscriptions and graph_entity references
+        let nodes_for_update = parse_kdl_model(EXAMPLE).0;
+        let edges_for_update = parse_kdl_model(EXAMPLE).1;
+        graph.update(cx, |graph, cx| {
+            graph.update_model(nodes_for_update, edges_for_update, cx);
+        });
+
         // Subscribe to input changes and update the graph
         let graph_for_sub = graph.clone();
         let input_state_for_graph = input_state.clone();

@@ -1,10 +1,6 @@
 [workspace]
 default-members = ["crates/viewer"]
-members = [
-    "crates/viewer",
-    "crates/story",
-    "crates/graphview",
-    "crates/layout"]
+members = ["crates/viewer", "crates/story", "crates/graphview", "crates/layout"]
 resolver = "2"
 
 [workspace.package]
@@ -14,9 +10,9 @@ license = "MIT"
 authors = ["Christian Jann <christian.jann@ymail.com>"]
 
 [workspace.dependencies]
-gpui-component = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz"}
-gpui-component-macros = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz"}
-gpui-component-assets = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz"}
+gpui-component = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz" }
+gpui-component-macros = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz" }
+gpui-component-assets = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz" }
 
 gpui = { version = "0.2.2" }
 gpui-macros = "0.2.2"
@@ -40,6 +36,7 @@ serde_repr = "0.1"
 smallvec = "1"
 smol = "2"
 tracing = "0.1.41"
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
 kdl = "6.5.0"
 dagre-rs = "0.1.0"
 

@@ -1,5 +1,6 @@
 use crate::grid::*;
 use crate::types::*;
+use tracing::{Level, debug, enabled};
 
 /// In-place layout method that modifies existing data
 pub fn layout_in_place<N: LayoutNode, E: LayoutEdge>(
@@ -19,8 +20,10 @@ pub fn layout_in_place<N: LayoutNode, E: LayoutEdge>(
         })
         .collect();
 
-    let internal_edges: Vec<(usize, usize)> =
-        edges.iter().map(|e| (e.source(), e.target())).collect();
+    let internal_edges: Vec<(usize, usize, Option<usize>, Option<usize>)> = edges
+        .iter()
+        .map(|e| (e.source(), e.target(), e.source_port(), e.target_port()))
+        .collect();
 
     // Run layout
     let result = config.layout(internal_nodes, internal_edges);
@@ -38,28 +41,72 @@ pub fn layout_in_place<N: LayoutNode, E: LayoutEdge>(
 }
 
 impl CustomLayout {
-    pub fn layout(&self, nodes: Vec<Node>, edges: Vec<(usize, usize)>) -> LayoutResult {
+    pub fn layout(
+        &self,
+        nodes: Vec<Node>,
+        edges: Vec<(usize, usize, Option<usize>, Option<usize>)>,
+    ) -> LayoutResult {
         let mut nodes = nodes;
 
         // Phase 1: Initial placement
         self.initial_placement(&mut nodes, &edges);
 
-        // Phase 2: Force-directed refinement
-        self.force_directed(&mut nodes, &edges);
+        // Phase 2a: Force-directed refinement with initial spacing (no overlap prevention)
+        self.force_directed_with_spacing(&mut nodes, &edges, self.initial_spacing, false);
+
+        // Check for overlaps after initial refinement
+        let has_overlaps = self.has_overlaps(&nodes);
+
+        if enabled!(Level::DEBUG) {
+            if has_overlaps {
+                debug!(
+                    "OVERLAP DETECTION: Overlaps found after initial refinement, running overlap prevention phase"
+                );
+            } else {
+                debug!("OVERLAP DETECTION: No overlaps after initial refinement");
+            }
+        }
+
+        // Phase 2b: If overlaps exist, run force-directed refinement with min spacing and overlap prevention
+        if has_overlaps {
+            self.force_directed_with_spacing(&mut nodes, &edges, self.min_spacing, true);
+        }
+
+        if enabled!(Level::DEBUG) {
+            self.detect_overlaps(&nodes);
+        }
 
         // Phase 3: Edge routing
-        let mut routed_edges = self.route_edges(&nodes, &edges);
+        let (mut routed_edges, mut grid) = self.route_edges(&mut nodes, &edges);
 
         // Phase 4: Calculate canvas and center layout
         let (canvas_width, canvas_height) = self.calculate_canvas_size(&nodes, &routed_edges);
-        self.center_layout(&mut nodes, &mut routed_edges, canvas_width, canvas_height);
+        self.center_layout(
+            &mut nodes,
+            &mut routed_edges,
+            canvas_width,
+            canvas_height,
+            Some(&mut grid),
+        );
 
         LayoutResult {
             nodes,
             edges: routed_edges,
             canvas_width,
             canvas_height,
+            grid: Some(grid),
         }
+    }
+
+    /// Route edges only, leaving node positions unchanged
+    pub fn route_edges_only(
+        &self,
+        nodes: &[Node],
+        edges: &[(usize, usize, Option<usize>, Option<usize>)],
+    ) -> Vec<Edge> {
+        let mut nodes = nodes.to_vec();
+        let (edges, _) = self.route_edges(&mut nodes, edges);
+        edges
     }
 
     /// In-place layout method that modifies existing data structures
@@ -80,8 +127,10 @@ impl CustomLayout {
             })
             .collect();
 
-        let internal_edges: Vec<(usize, usize)> =
-            edges.iter().map(|e| (e.source(), e.target())).collect();
+        let internal_edges: Vec<(usize, usize, Option<usize>, Option<usize>)> = edges
+            .iter()
+            .map(|e| (e.source(), e.target(), e.source_port(), e.target_port()))
+            .collect();
 
         // Run layout
         let result = self.layout(internal_nodes, internal_edges);
@@ -106,8 +155,12 @@ impl CustomLayout {
         Ok(())
     }
 
-    fn initial_placement(&self, nodes: &mut [Node], edges: &[(usize, usize)]) {
-        // Simple clustering based on connectivity
+    fn initial_placement(
+        &self,
+        nodes: &mut [Node],
+        edges: &[(usize, usize, Option<usize>, Option<usize>)],
+    ) {
+        // Improved clustering based on connectivity with size-aware placement
         let mut clusters: Vec<Vec<usize>> = Vec::new();
         let mut assigned = vec![false; nodes.len()];
 
@@ -119,7 +172,7 @@ impl CustomLayout {
             assigned[i] = true;
 
             // Find connected nodes
-            for &(a, b) in edges {
+            for &(a, b, _, _) in edges {
                 if a == i && !assigned[b] {
                     cluster.push(b);
                     assigned[b] = true;
@@ -131,27 +184,59 @@ impl CustomLayout {
             clusters.push(cluster);
         }
 
-        // Place clusters
-        let mut x_offset = 0.0;
-        for cluster in clusters {
-            let mut y_offset = 0.0;
-            for &node_idx in &cluster {
+        // Place clusters with guaranteed non-overlapping spacing
+        let mut placed_clusters: Vec<(f64, f64, f64, f64)> = Vec::new(); // (x, y, width, height)
+        let cluster_spacing = self.initial_spacing * 5.0; // Use initial_spacing scaled up for cluster separation
+
+        // First pass: calculate maximum cluster dimensions
+        let mut max_cluster_width = 0.0;
+        let mut max_cluster_height = 0.0;
+
+        for cluster in &clusters {
+            let mut total_height = 0.0;
+            let mut max_width = 0.0;
+
+            for &node_idx in cluster {
+                max_width = f64::max(max_width, nodes[node_idx].size.width);
+                total_height += nodes[node_idx].size.height + self.min_spacing;
+            }
+            total_height -= self.min_spacing; // Remove last spacing
+
+            max_cluster_width = f64::max(max_cluster_width, max_width);
+            max_cluster_height = f64::max(max_cluster_height, total_height);
+        }
+
+        // Second pass: place clusters using fixed spacing
+        for (i, cluster) in clusters.iter().enumerate() {
+            // Place cluster in a grid pattern with fixed large spacing
+            let clusters_per_row = 3; // Limit clusters per row
+            let row = i / clusters_per_row;
+            let col = i % clusters_per_row;
+
+            let cluster_x = col as f64 * cluster_spacing;
+            let cluster_y = row as f64 * cluster_spacing;
+
+            // Place the cluster
+            let mut y_offset = cluster_y;
+            for &node_idx in cluster {
                 nodes[node_idx].position = Position {
-                    x: x_offset,
+                    x: cluster_x,
                     y: y_offset,
                 };
                 y_offset += nodes[node_idx].size.height + self.min_spacing;
             }
-            x_offset += cluster
-                .iter()
-                .map(|&i| nodes[i].size.width)
-                .max_by(|a, b| a.partial_cmp(b).unwrap())
-                .unwrap_or(100.0)
-                + self.min_spacing;
+
+            placed_clusters.push((cluster_x, cluster_y, max_cluster_width, max_cluster_height));
         }
     }
 
-    fn force_directed(&self, nodes: &mut [Node], edges: &[(usize, usize)]) {
+    fn force_directed_with_spacing(
+        &self,
+        nodes: &mut [Node],
+        edges: &[(usize, usize, Option<usize>, Option<usize>)],
+        spacing: f64,
+        prevent_overlaps: bool,
+    ) {
         for _ in 0..self.iterations {
             let mut forces: Vec<Position> = vec![Position { x: 0.0, y: 0.0 }; nodes.len()];
 
@@ -163,12 +248,8 @@ impl CustomLayout {
                     let dy = (nodes[j].position.y + nodes[j].size.height / 2.0)
                         - (nodes[i].position.y + nodes[i].size.height / 2.0);
                     let min_dist =
-                        (nodes[i].size.width / 2.0 + nodes[j].size.width / 2.0 + self.min_spacing)
-                            .max(
-                                nodes[i].size.height / 2.0
-                                    + nodes[j].size.height / 2.0
-                                    + self.min_spacing,
-                            );
+                        (nodes[i].size.width / 2.0 + nodes[j].size.width / 2.0 + spacing)
+                            .max(nodes[i].size.height / 2.0 + nodes[j].size.height / 2.0 + spacing);
                     let dist = (dx * dx + dy * dy).sqrt();
                     if dist < min_dist {
                         let force = self.repulsion_strength * (min_dist - dist) / min_dist;
@@ -184,7 +265,7 @@ impl CustomLayout {
             }
 
             // Calculate attraction
-            for &(a, b) in edges {
+            for &(a, b, _, _) in edges {
                 let dx = nodes[b].position.x - nodes[a].position.x;
                 let dy = nodes[b].position.y - nodes[a].position.y;
                 let dist = (dx * dx + dy * dy).sqrt().max(1.0);
@@ -201,13 +282,164 @@ impl CustomLayout {
 
             // Apply forces
             for i in 0..nodes.len() {
-                nodes[i].position.x += forces[i].x * 0.1;
-                nodes[i].position.y += forces[i].y * 0.1;
+                if prevent_overlaps {
+                    let new_x = nodes[i].position.x + forces[i].x * 0.1;
+                    let new_y = nodes[i].position.y + forces[i].y * 0.1;
+
+                    // Check if this move would cause any overlaps
+                    let mut can_move = true;
+                    for j in 0..nodes.len() {
+                        if i == j {
+                            continue;
+                        }
+
+                        let other_x = nodes[j].position.x;
+                        let other_y = nodes[j].position.y;
+
+                        let overlap_x = new_x < other_x + nodes[j].size.width
+                            && new_x + nodes[i].size.width > other_x;
+                        let overlap_y = new_y < other_y + nodes[j].size.height
+                            && new_y + nodes[i].size.height > other_y;
+
+                        if overlap_x && overlap_y {
+                            can_move = false;
+                            break;
+                        }
+                    }
+
+                    // Only apply the move if it doesn't cause overlaps
+                    if can_move {
+                        nodes[i].position.x = new_x;
+                        nodes[i].position.y = new_y;
+                    }
+                } else {
+                    // Apply forces directly without overlap prevention
+                    nodes[i].position.x += forces[i].x * 0.1;
+                    nodes[i].position.y += forces[i].y * 0.1;
+                }
             }
         }
     }
 
-    fn route_edges(&self, nodes: &[Node], edges: &[(usize, usize)]) -> Vec<Edge> {
+    fn detect_overlaps(&self, nodes: &[Node]) {
+        let mut overlaps = Vec::new();
+
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                let node1 = &nodes[i];
+                let node2 = &nodes[j];
+
+                // Check if bounding boxes overlap
+                let overlap_x = node1.position.x < node2.position.x + node2.size.width
+                    && node1.position.x + node1.size.width > node2.position.x;
+                let overlap_y = node1.position.y < node2.position.y + node2.size.height
+                    && node1.position.y + node1.size.height > node2.position.y;
+
+                if overlap_x && overlap_y {
+                    overlaps.push((i, j, node1.id.clone(), node2.id.clone()));
+                }
+            }
+        }
+
+        if enabled!(Level::DEBUG) {
+            if !overlaps.is_empty() {
+                debug!(
+                    "OVERLAP DETECTION: Found {} overlapping node pairs:",
+                    overlaps.len()
+                );
+                for (i, j, id1, id2) in overlaps {
+                    let node1 = &nodes[i];
+                    let node2 = &nodes[j];
+                    debug!(
+                        "  {} ({:.1},{:.1} size {:.1}x{:.1}) overlaps with {} ({:.1},{:.1} size {:.1}x{:.1})",
+                        id1,
+                        node1.position.x,
+                        node1.position.y,
+                        node1.size.width,
+                        node1.size.height,
+                        id2,
+                        node2.position.x,
+                        node2.position.y,
+                        node2.size.width,
+                        node2.size.height
+                    );
+                }
+            } else {
+                debug!("OVERLAP DETECTION: No overlapping nodes found");
+            }
+        }
+    }
+
+    fn has_overlaps(&self, nodes: &[Node]) -> bool {
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                let node1 = &nodes[i];
+                let node2 = &nodes[j];
+
+                // Check if bounding boxes overlap
+                let overlap_x = node1.position.x < node2.position.x + node2.size.width
+                    && node1.position.x + node1.size.width > node2.position.x;
+                let overlap_y = node1.position.y < node2.position.y + node2.size.height
+                    && node1.position.y + node1.size.height > node2.position.y;
+
+                if overlap_x && overlap_y {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn calculate_extension_distance(
+        &self,
+        grid: &Grid,
+        start_x: usize,
+        start_y: usize,
+        direction: &str,
+        cell_size: f64,
+    ) -> f64 {
+        match direction {
+            "right" => {
+                for x in (start_x + 1)..grid.width {
+                    if !grid.obstacles[start_y][x] {
+                        return (x - start_x) as f64 * cell_size;
+                    }
+                }
+                25.0 // fallback
+            }
+            "left" => {
+                for x in (0..start_x).rev() {
+                    if !grid.obstacles[start_y][x] {
+                        return (start_x - x) as f64 * cell_size;
+                    }
+                }
+                25.0
+            }
+            "bottom" => {
+                for y in (start_y + 1)..grid.height {
+                    if !grid.obstacles[y][start_x] {
+                        return (y - start_y) as f64 * cell_size;
+                    }
+                }
+                25.0
+            }
+            "top" => {
+                for y in (0..start_y).rev() {
+                    if !grid.obstacles[y][start_x] {
+                        return (start_y - y) as f64 * cell_size;
+                    }
+                }
+                25.0
+            }
+            _ => 25.0,
+        }
+    }
+
+    fn route_edges(
+        &self,
+        nodes: &mut [Node],
+        edges: &[(usize, usize, Option<usize>, Option<usize>)],
+    ) -> (Vec<Edge>, Grid) {
         // Estimate canvas size
         let min_x = nodes
             .iter()
@@ -232,12 +464,160 @@ impl CustomLayout {
         let mut grid = Grid::new(nodes, _canvas_width, _canvas_height, cell_size);
 
         let mut routed_edges = vec![];
-        for &(source, target) in edges {
+        for &(source, target, source_port_id, target_port_id) in edges {
+            // Skip self-loops for now
+            if source == target {
+                continue;
+            }
+
+            // Handle source port
+            let (source_pos, actual_source_port) = {
+                let source_node = &nodes[source];
+                if let Some(port_id) = source_port_id {
+                    // Check if port with this id exists
+                    if let Some(port_index) =
+                        source_node.ports.iter().position(|p| p.id == Some(port_id))
+                    {
+                        let port = &source_node.ports[port_index];
+                        (
+                            Position {
+                                x: source_node.position.x + port.position.x + port.size.width / 2.0,
+                                y: source_node.position.y
+                                    + port.position.y
+                                    + port.size.height / 2.0,
+                            },
+                            port_index,
+                        )
+                    } else {
+                        // Find best available port (no id assigned yet)
+                        let available_ports: Vec<usize> = source_node
+                            .ports
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, p)| p.id.is_none())
+                            .map(|(i, _)| i)
+                            .collect();
+                        if !available_ports.is_empty() {
+                            // Select best from available
+                            let best_index = available_ports
+                                .into_iter()
+                                .min_by_key(|&i| {
+                                    let port = &source_node.ports[i];
+                                    let port_world_x = source_node.position.x
+                                        + port.position.x
+                                        + port.size.width / 2.0;
+                                    let port_world_y = source_node.position.y
+                                        + port.position.y
+                                        + port.size.height / 2.0;
+                                    let target_center_x =
+                                        nodes[target].position.x + nodes[target].size.width / 2.0;
+                                    let target_center_y =
+                                        nodes[target].position.y + nodes[target].size.height / 2.0;
+                                    let dx = port_world_x - target_center_x;
+                                    let dy = port_world_y - target_center_y;
+                                    (dx * dx + dy * dy) as i64
+                                })
+                                .unwrap();
+                            // Assign the id
+                            nodes[source].ports[best_index].id = Some(port_id);
+                            let port = &nodes[source].ports[best_index];
+                            (
+                                Position {
+                                    x: nodes[source].position.x
+                                        + port.position.x
+                                        + port.size.width / 2.0,
+                                    y: nodes[source].position.y
+                                        + port.position.y
+                                        + port.size.height / 2.0,
+                                },
+                                best_index,
+                            )
+                        } else {
+                            // No available ports, fall back to select_port
+                            let (pos, opt_port) =
+                                self.select_port(&nodes[source], &nodes[target], true);
+                            (pos, opt_port.unwrap_or(0))
+                        }
+                    }
+                } else {
+                    // No port specified, select best
+                    let (pos, opt_port) = self.select_port(&nodes[source], &nodes[target], true);
+                    (pos, opt_port.unwrap_or(0))
+                }
+            };
+
+            // Handle target port
+            let (target_pos, actual_target_port) = {
+                let target_node = &nodes[target];
+                if let Some(port_id) = target_port_id {
+                    if let Some(port_index) =
+                        target_node.ports.iter().position(|p| p.id == Some(port_id))
+                    {
+                        let port = &target_node.ports[port_index];
+                        (
+                            Position {
+                                x: target_node.position.x + port.position.x + port.size.width / 2.0,
+                                y: target_node.position.y
+                                    + port.position.y
+                                    + port.size.height / 2.0,
+                            },
+                            port_index,
+                        )
+                    } else {
+                        let available_ports: Vec<usize> = target_node
+                            .ports
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, p)| p.id.is_none())
+                            .map(|(i, _)| i)
+                            .collect();
+                        if !available_ports.is_empty() {
+                            let best_index = available_ports
+                                .into_iter()
+                                .min_by_key(|&i| {
+                                    let port = &target_node.ports[i];
+                                    let port_world_x = target_node.position.x
+                                        + port.position.x
+                                        + port.size.width / 2.0;
+                                    let port_world_y = target_node.position.y
+                                        + port.position.y
+                                        + port.size.height / 2.0;
+                                    let source_center_x =
+                                        nodes[source].position.x + nodes[source].size.width / 2.0;
+                                    let source_center_y =
+                                        nodes[source].position.y + nodes[source].size.height / 2.0;
+                                    let dx = port_world_x - source_center_x;
+                                    let dy = port_world_y - source_center_y;
+                                    (dx * dx + dy * dy) as i64
+                                })
+                                .unwrap();
+                            nodes[target].ports[best_index].id = Some(port_id);
+                            let port = &nodes[target].ports[best_index];
+                            (
+                                Position {
+                                    x: nodes[target].position.x
+                                        + port.position.x
+                                        + port.size.width / 2.0,
+                                    y: nodes[target].position.y
+                                        + port.position.y
+                                        + port.size.height / 2.0,
+                                },
+                                best_index,
+                            )
+                        } else {
+                            let (pos, opt_port) =
+                                self.select_port(&nodes[target], &nodes[source], false);
+                            (pos, opt_port.unwrap_or(0))
+                        }
+                    }
+                } else {
+                    let (pos, opt_port) = self.select_port(&nodes[target], &nodes[source], false);
+                    (pos, opt_port.unwrap_or(0))
+                }
+            };
+
             let source_node = &nodes[source];
             let target_node = &nodes[target];
-
-            let source_pos = self.select_port(source_node, target_node);
-            let target_pos = self.select_port(target_node, source_node);
 
             let source_grid_pos =
                 nearest_grid(&source_pos, grid.origin_x, grid.origin_y, cell_size);
@@ -263,16 +643,25 @@ impl CustomLayout {
                 "bottom"
             };
 
+            let source_grid = grid.pos_to_grid(&source_grid_pos);
+            let source_extension = self.calculate_extension_distance(
+                &grid,
+                source_grid.0,
+                source_grid.1,
+                source_side,
+                cell_size,
+            );
+
             let source_ext_x = source_grid_pos.x
                 + match source_side {
-                    "right" => 25.0,
-                    "left" => -25.0,
+                    "right" => source_extension,
+                    "left" => -source_extension,
                     _ => 0.0,
                 };
             let source_ext_y = source_grid_pos.y
                 + match source_side {
-                    "bottom" => 25.0,
-                    "top" => -25.0,
+                    "bottom" => source_extension,
+                    "top" => -source_extension,
                     "right" => 0.0,
                     _ => 0.0,
                 };
@@ -297,16 +686,25 @@ impl CustomLayout {
                 "bottom"
             };
 
+            let target_grid = grid.pos_to_grid(&target_grid_pos);
+            let target_extension = self.calculate_extension_distance(
+                &grid,
+                target_grid.0,
+                target_grid.1,
+                target_side,
+                cell_size,
+            );
+
             let target_ext_x = target_grid_pos.x
                 + match target_side {
-                    "right" => 25.0,
-                    "left" => -25.0,
+                    "right" => target_extension,
+                    "left" => -target_extension,
                     _ => 0.0,
                 };
             let target_ext_y = target_grid_pos.y
                 + match target_side {
-                    "bottom" => 25.0,
-                    "top" => -25.0,
+                    "bottom" => target_extension,
+                    "top" => -target_extension,
                     "right" => 0.0,
                     _ => 0.0,
                 };
@@ -329,29 +727,38 @@ impl CustomLayout {
             full_path.extend(path);
             full_path.push(target_grid_pos);
 
-            // Debug: check for diagonal segments
-            for i in 1..full_path.len() {
-                let p1 = &full_path[i - 1];
-                let p2 = &full_path[i];
-                if p1.x != p2.x && p1.y != p2.y {
-                    println!(
-                        "WARNING: Diagonal segment calculated: ({}, {}) to ({}, {})",
-                        p1.x, p1.y, p2.x, p2.y
-                    );
+            if enabled!(Level::DEBUG) {
+                // Debug: check for diagonal segments
+                for i in 1..full_path.len() {
+                    let p1 = &full_path[i - 1];
+                    let p2 = &full_path[i];
+                    if p1.x != p2.x && p1.y != p2.y {
+                        debug!(
+                            "WARNING: Diagonal segment calculated: ({}, {}) to ({}, {})",
+                            p1.x, p1.y, p2.x, p2.y
+                        );
+                    }
                 }
             }
 
             routed_edges.push(Edge {
                 source,
                 target,
+                source_port: Some(actual_source_port),
+                target_port: Some(actual_target_port),
                 path: full_path,
             });
         }
 
-        routed_edges
+        (routed_edges, grid)
     }
 
-    fn select_port(&self, from_node: &Node, to_node: &Node) -> Position {
+    fn select_port(
+        &self,
+        from_node: &Node,
+        to_node: &Node,
+        _prefer_output: bool,
+    ) -> (Position, Option<usize>) {
         if from_node.ports.is_empty() {
             // Default to center, snapped to grid
             let center_x = from_node.position.x + from_node.size.width / 2.0;
@@ -362,10 +769,13 @@ impl CustomLayout {
             let snapped_y = ((center_y / 10.0).round() * 10.0)
                 .max(from_node.position.y)
                 .min(from_node.position.y + from_node.size.height);
-            Position {
-                x: snapped_x,
-                y: snapped_y,
-            }
+            (
+                Position {
+                    x: snapped_x,
+                    y: snapped_y,
+                },
+                None,
+            )
         } else {
             // Calculate direction vector from from_node center to to_node center
             let from_center_x = from_node.position.x + from_node.size.width / 2.0;
@@ -377,10 +787,10 @@ impl CustomLayout {
             let dy = to_center_y - from_center_y;
 
             // Find the port whose position best matches the direction
-            let mut best_port = None;
+            let mut best_port_index = None;
             let mut best_score = f64::INFINITY;
 
-            for port in &from_node.ports {
+            for (i, port) in from_node.ports.iter().enumerate() {
                 let port_world_x = from_node.position.x + port.position.x + port.size.width / 2.0;
                 let port_world_y = from_node.position.y + port.position.y + port.size.height / 2.0;
 
@@ -398,16 +808,20 @@ impl CustomLayout {
                     let score = 1.0 - cos_angle; // 0 when perfectly aligned, 2 when opposite
                     if score < best_score {
                         best_score = score;
-                        best_port = Some(port);
+                        best_port_index = Some(i);
                     }
                 }
             }
 
-            if let Some(port) = best_port {
-                Position {
-                    x: from_node.position.x + port.position.x + port.size.width / 2.0,
-                    y: from_node.position.y + port.position.y + port.size.height / 2.0,
-                }
+            if let Some(port_index) = best_port_index {
+                let port = &from_node.ports[port_index];
+                (
+                    Position {
+                        x: from_node.position.x + port.position.x + port.size.width / 2.0,
+                        y: from_node.position.y + port.position.y + port.size.height / 2.0,
+                    },
+                    Some(port_index),
+                )
             } else {
                 // Fallback to center if no suitable port found
                 let center_x = from_node.position.x + from_node.size.width / 2.0;
@@ -418,10 +832,13 @@ impl CustomLayout {
                 let snapped_y = ((center_y / 10.0).round() * 10.0)
                     .max(from_node.position.y)
                     .min(from_node.position.y + from_node.size.height);
-                Position {
-                    x: snapped_x,
-                    y: snapped_y,
-                }
+                (
+                    Position {
+                        x: snapped_x,
+                        y: snapped_y,
+                    },
+                    None,
+                )
             }
         }
     }
@@ -460,6 +877,7 @@ impl CustomLayout {
         edges: &mut [Edge],
         canvas_width: f64,
         canvas_height: f64,
+        grid: Option<&mut Grid>,
     ) {
         let mut min_x = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
@@ -498,6 +916,12 @@ impl CustomLayout {
                 point.y += offset_y;
             }
         }
+
+        // Update grid origin to match the centered coordinate system
+        if let Some(grid) = grid {
+            grid.origin_x += offset_x;
+            grid.origin_y += offset_y;
+        }
     }
 }
 
@@ -522,6 +946,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Input,
+                        id: None,
                     }, // left
                     Port {
                         position: Position { x: 100.0, y: 25.0 },
@@ -530,6 +955,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Output,
+                        id: None,
                     }, // right
                     Port {
                         position: Position { x: 50.0, y: 0.0 },
@@ -538,6 +964,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Input,
+                        id: None,
                     }, // top
                     Port {
                         position: Position { x: 50.0, y: 50.0 },
@@ -546,6 +973,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Output,
+                        id: None,
                     }, // bottom
                 ],
                 attributes: vec![],
@@ -565,6 +993,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Input,
+                        id: None,
                     },
                     Port {
                         position: Position { x: 80.0, y: 30.0 },
@@ -573,6 +1002,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Output,
+                        id: None,
                     },
                     Port {
                         position: Position { x: 40.0, y: 0.0 },
@@ -581,6 +1011,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Input,
+                        id: None,
                     },
                     Port {
                         position: Position { x: 40.0, y: 60.0 },
@@ -589,6 +1020,7 @@ mod tests {
                             height: 50.0,
                         },
                         port_type: PortType::Output,
+                        id: None,
                     },
                 ],
                 attributes: vec![],
@@ -596,8 +1028,8 @@ mod tests {
         ]
     }
 
-    fn create_test_edge_indices() -> Vec<(usize, usize)> {
-        vec![(0, 1)]
+    fn create_test_edge_indices() -> Vec<(usize, usize, Option<usize>, Option<usize>)> {
+        vec![(0, 1, None, None)]
     }
 
     #[test]
@@ -622,7 +1054,7 @@ mod tests {
             ..Default::default()
         };
 
-        layout.force_directed(&mut nodes, &edges);
+        layout.force_directed_with_spacing(&mut nodes, &edges, layout.min_spacing, true);
 
         // Nodes should have moved apart
         let dist = ((nodes[1].position.x - nodes[0].position.x).powi(2)
@@ -633,11 +1065,11 @@ mod tests {
 
     #[test]
     fn test_route_edges() {
-        let nodes = create_test_nodes();
+        let mut nodes = create_test_nodes();
         let edges = create_test_edge_indices();
         let layout = CustomLayout::default();
 
-        let routed = layout.route_edges(&nodes, &edges);
+        let (routed, _) = layout.route_edges(&mut nodes, &edges);
 
         assert_eq!(routed.len(), 1);
         assert_eq!(routed[0].source, 0);
@@ -657,5 +1089,19 @@ mod tests {
         assert_eq!(result.edges.len(), 1);
         println!("Nodes: {:?}", result.nodes);
         println!("Edges: {:?}", result.edges);
+    }
+
+    #[test]
+    fn test_route_edges_only() {
+        let nodes = create_test_nodes();
+        let edges = create_test_edge_indices();
+        let layout = CustomLayout::default();
+
+        let routed_edges = layout.route_edges_only(&nodes, &edges);
+
+        assert_eq!(routed_edges.len(), 1);
+        assert_eq!(routed_edges[0].source, 0);
+        assert_eq!(routed_edges[0].target, 1);
+        assert!(routed_edges[0].path.len() >= 2);
     }
 }

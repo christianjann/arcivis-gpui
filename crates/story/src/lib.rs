@@ -210,8 +210,12 @@ pub fn init(cx: &mut App) {
         .with(tracing_subscriber::fmt::layer())
         .with(
             tracing_subscriber::EnvFilter::builder()
-                .with_default_directive("info".parse().unwrap())
-                .from_env_lossy(),
+                .with_default_directive("debug".parse().unwrap())
+                .from_env_lossy()
+                .add_directive("blade_graphics=off".parse().unwrap())
+                .add_directive("naga=off".parse().unwrap())
+                .add_directive("cosmic_text=off".parse().unwrap())
+                .add_directive("globset=off".parse().unwrap()),
         )
         .init();
 

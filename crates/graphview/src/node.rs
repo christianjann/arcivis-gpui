@@ -1,3 +1,4 @@
+use crate::NodeMoved;
 use gpui::div;
 use gpui::*;
 use gpui_component::ActiveTheme;
@@ -32,7 +33,11 @@ pub struct GraphNode {
     pub children: Vec<NodeChild>,
     /// Byte range in the source document for this node (start, end)
     pub span: Option<(usize, usize)>,
+    /// Reference to the parent graph entity for event emission
+    pub graph_entity: Option<Entity<super::Graph>>,
 }
+
+impl EventEmitter<NodeMoved> for GraphNode {}
 
 impl GraphNode {
     /// Estimate node size based on name, type, and children (static version for pre-creation estimation)
@@ -279,12 +284,27 @@ impl Render for GraphNode {
                         );
                         this.x = new_origin.x;
                         this.y = new_origin.y;
+                        // Notify graph that this node moved
+                        if let Some(graph_entity) = &this.graph_entity {
+                            _cx.update_entity(graph_entity, |graph, cx| {
+                                graph.handle_node_moved(this.id, cx);
+                            });
+                        }
                     }
                 }),
             )
             .on_drop(cx.listener(|this, dragged_id: &u64, _window, _cx| {
                 if *dragged_id == this.id {
                     this.drag_offset = None;
+                    // Notify graph that dragging ended (defer to avoid entity conflicts)
+                    if let Some(graph_entity) = &this.graph_entity {
+                        let graph_entity = graph_entity.clone();
+                        _cx.defer(move |cx| {
+                            cx.update_entity(&graph_entity, |graph, cx| {
+                                graph.handle_drag_ended(cx);
+                            });
+                        });
+                    }
                 }
             }));
 

@@ -4,6 +4,7 @@ pub use crate::generators::watts_strogatz::generate_watts_strogatz_graph;
 pub use crate::graph::EdgeRouting;
 pub use crate::graph::Graph;
 pub use crate::graph::LayoutMode;
+pub use crate::graph::NodeMoved;
 pub use crate::graph::NodeSelected;
 pub use crate::node::GraphNode;
 pub use crate::node::NodeChild;

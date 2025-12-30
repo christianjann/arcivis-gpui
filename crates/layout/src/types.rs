@@ -1,3 +1,4 @@
+use crate::grid::Grid;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +33,8 @@ pub trait LayoutNode {
 pub trait LayoutEdge {
     fn source(&self) -> usize;
     fn target(&self) -> usize;
+    fn source_port(&self) -> Option<usize>;
+    fn target_port(&self) -> Option<usize>;
     fn set_path(&mut self, path: Vec<Position>);
 }
 
@@ -46,6 +49,7 @@ pub struct Port {
     pub position: Position, // relative to node position
     pub size: Size,
     pub port_type: PortType,
+    pub id: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +65,8 @@ pub struct Node {
 pub struct Edge {
     pub source: usize,
     pub target: usize,
+    pub source_port: Option<usize>,
+    pub target_port: Option<usize>,
     pub path: Vec<Position>, // waypoints for routing
 }
 
@@ -70,6 +76,7 @@ pub struct LayoutResult {
     pub edges: Vec<Edge>,
     pub canvas_width: f64,
     pub canvas_height: f64,
+    pub grid: Option<Grid>,
 }
 
 #[derive(Clone)]
@@ -77,6 +84,7 @@ pub struct CustomLayout {
     pub iterations: usize,
     pub repulsion_strength: f64,
     pub attraction_strength: f64,
+    pub initial_spacing: f64,
     pub min_spacing: f64,
     pub allow_diagonals: bool,
     pub spaced_edges: bool,
@@ -88,6 +96,7 @@ impl Default for CustomLayout {
             iterations: 100,
             repulsion_strength: 1000.0,
             attraction_strength: 0.1,
+            initial_spacing: 100.0,
             min_spacing: 20.0,
             allow_diagonals: true,
             spaced_edges: false,

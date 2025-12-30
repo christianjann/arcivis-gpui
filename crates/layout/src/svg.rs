@@ -1,55 +1,30 @@
+use crate::grid::Grid;
 use crate::types::*;
 use std::fs;
 
 pub fn generate_svg(result: &LayoutResult, filename: &str, show_grid: bool, show_all_ports: bool) {
+    generate_svg_with_obstacles(
+        result,
+        filename,
+        show_grid,
+        show_all_ports,
+        None, // Disable obstacle drawing by default
+    )
+}
+
+pub fn generate_svg_with_obstacles(
+    result: &LayoutResult,
+    filename: &str,
+    show_grid: bool,
+    show_all_ports: bool,
+    grid: Option<&Grid>,
+) {
     use std::collections::HashSet;
     let mut used_ports = HashSet::new();
 
     for edge in &result.edges {
-        let source_node = &result.nodes[edge.source];
-        let target_node = &result.nodes[edge.target];
-
-        // Determine side for source
-        let dx = target_node.position.x + target_node.size.width / 2.0
-            - (source_node.position.x + source_node.size.width / 2.0);
-        let dy = target_node.position.y + target_node.size.height / 2.0
-            - (source_node.position.y + source_node.size.height / 2.0);
-        let side = if dx.abs() > dy.abs() {
-            if dx > 0.0 { "right" } else { "left" }
-        } else if dy > 0.0 {
-            "bottom"
-        } else {
-            "top"
-        };
-        let port_index = match side {
-            "left" => 0,
-            "right" => 1,
-            "top" => 2,
-            "bottom" => 3,
-            _ => 0,
-        };
-        used_ports.insert((edge.source, port_index));
-
-        // Determine side for target
-        let dx = source_node.position.x + source_node.size.width / 2.0
-            - (target_node.position.x + target_node.size.width / 2.0);
-        let dy = source_node.position.y + source_node.size.height / 2.0
-            - (target_node.position.y + target_node.size.height / 2.0);
-        let side = if dx.abs() > dy.abs() {
-            if dx > 0.0 { "right" } else { "left" }
-        } else if dy > 0.0 {
-            "bottom"
-        } else {
-            "top"
-        };
-        let port_index = match side {
-            "left" => 0,
-            "right" => 1,
-            "top" => 2,
-            "bottom" => 3,
-            _ => 0,
-        };
-        used_ports.insert((edge.target, port_index));
+        used_ports.insert((edge.source, edge.source_port));
+        used_ports.insert((edge.target, edge.target_port));
     }
 
     let mut svg = format!(
@@ -83,6 +58,25 @@ pub fn generate_svg(result: &LayoutResult, filename: &str, show_grid: bool, show
 "#,
                 y, result.canvas_width, y
             ));
+        }
+    }
+
+    // Add obstacle visualization if grid is provided
+    if let Some(grid) = grid {
+        let cell_size = 5.0;
+        for y in 0..grid.height {
+            for x in 0..grid.width {
+                if grid.obstacles[y][x] {
+                    // This is an obstacle (true means blocked)
+                    let pos_x = grid.origin_x + x as f64 * cell_size;
+                    let pos_y = grid.origin_y + y as f64 * cell_size;
+                    svg.push_str(&format!(
+                        r#"<rect x="{}" y="{}" width="{}" height="{}" fill="red" fill-opacity="0.3" stroke="red" stroke-width="0.5"/>
+"#,
+                        pos_x, pos_y, cell_size, cell_size
+                    ));
+                }
+            }
         }
     }
 
@@ -125,7 +119,7 @@ pub fn generate_svg(result: &LayoutResult, filename: &str, show_grid: bool, show
 
     for (node_index, node) in result.nodes.iter().enumerate() {
         for (port_index, port) in node.ports.iter().enumerate() {
-            if show_all_ports || used_ports.contains(&(node_index, port_index)) {
+            if show_all_ports || used_ports.contains(&(node_index, Some(port_index))) {
                 let fill = match port.port_type {
                     PortType::Input => "lightblue",
                     PortType::Output => "lightcoral",
