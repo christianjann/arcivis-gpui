@@ -432,7 +432,7 @@ impl Graph {
 
     /// Recalculate edge paths using ArchViz orthogonal routing with current node positions
     pub fn recalculate_archviz_edges(&mut self, cx: &mut Context<Self>) {
-        use archviz_layout::{CustomLayout, Node, Port, PortType, Position, Size};
+        use archviz_layout::{ArchVizLayout, Node, Port, PortType, Position, Size};
 
         let n = self.nodes.len();
         if n == 0 {
@@ -505,7 +505,7 @@ impl Graph {
             .collect();
 
         // Run the archviz layout algorithm with fixed positions
-        let layout = CustomLayout::default();
+        let layout = ArchVizLayout::default();
         let routed_edges = layout.route_edges_only(&layout_nodes, &layout_edges);
 
         // Only update edge paths, don't move nodes
@@ -524,7 +524,7 @@ impl Graph {
     }
 
     pub fn apply_archviz_layout(&mut self, cx: &mut Context<Self>) {
-        use archviz_layout::{CustomLayout, Node, Port, PortType, Position, Size};
+        use archviz_layout::{ArchVizLayout, Node, Port, PortType, Position, Size};
 
         let n = self.nodes.len();
         if n == 0 {
@@ -593,7 +593,7 @@ impl Graph {
             .collect();
 
         // Run the archviz layout algorithm
-        let layout = CustomLayout::default();
+        let layout = ArchVizLayout::default();
         let result = layout.layout(layout_nodes, layout_edges);
 
         //print!("{:?}", &result);

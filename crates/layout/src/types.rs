@@ -80,7 +80,7 @@ pub struct LayoutResult {
 }
 
 #[derive(Clone)]
-pub struct CustomLayout {
+pub struct ArchVizLayout {
     pub iterations: usize,
     pub repulsion_strength: f64,
     pub attraction_strength: f64,
@@ -90,7 +90,7 @@ pub struct CustomLayout {
     pub spaced_edges: bool,
 }
 
-impl Default for CustomLayout {
+impl Default for ArchVizLayout {
     fn default() -> Self {
         Self {
             iterations: 100,

@@ -6,7 +6,7 @@ use tracing::{Level, debug, enabled};
 pub fn layout_in_place<N: LayoutNode, E: LayoutEdge>(
     nodes: &mut [N],
     edges: &mut [E],
-    config: &CustomLayout,
+    config: &ArchVizLayout,
 ) -> Result<(), LayoutError> {
     // Convert to internal format
     let internal_nodes: Vec<Node> = nodes
@@ -40,7 +40,7 @@ pub fn layout_in_place<N: LayoutNode, E: LayoutEdge>(
     Ok(())
 }
 
-impl CustomLayout {
+impl ArchVizLayout {
     pub fn layout(
         &self,
         nodes: Vec<Node>,
@@ -1036,7 +1036,7 @@ mod tests {
     fn test_initial_placement() {
         let mut nodes = create_test_nodes();
         let edges = create_test_edge_indices();
-        let layout = CustomLayout::default();
+        let layout = ArchVizLayout::default();
 
         layout.initial_placement(&mut nodes, &edges);
 
@@ -1048,7 +1048,7 @@ mod tests {
     fn test_force_directed() {
         let mut nodes = create_test_nodes();
         let edges = create_test_edge_indices();
-        let layout = CustomLayout {
+        let layout = ArchVizLayout {
             iterations: 200,
             repulsion_strength: 10000.0,
             ..Default::default()
@@ -1067,7 +1067,7 @@ mod tests {
     fn test_route_edges() {
         let mut nodes = create_test_nodes();
         let edges = create_test_edge_indices();
-        let layout = CustomLayout::default();
+        let layout = ArchVizLayout::default();
 
         let (routed, _) = layout.route_edges(&mut nodes, &edges);
 
@@ -1081,7 +1081,7 @@ mod tests {
     fn test_full_layout() {
         let nodes = create_test_nodes();
         let edges = create_test_edge_indices();
-        let layout = CustomLayout::default();
+        let layout = ArchVizLayout::default();
 
         let result = layout.layout(nodes, edges);
 
@@ -1095,7 +1095,7 @@ mod tests {
     fn test_route_edges_only() {
         let nodes = create_test_nodes();
         let edges = create_test_edge_indices();
-        let layout = CustomLayout::default();
+        let layout = ArchVizLayout::default();
 
         let routed_edges = layout.route_edges_only(&nodes, &edges);
 

@@ -149,7 +149,7 @@ fn test_layout_set_1() {
     ];
     let edges = vec![(0, 1, None, None), (1, 2, None, None), (0, 2, None, None)];
 
-    let layout = CustomLayout {
+    let layout = ArchVizLayout {
         min_spacing: 120.0,
         ..Default::default()
     };
@@ -371,7 +371,7 @@ fn test_layout_set_2() {
         (2, 3, None, None),
     ];
 
-    let layout = CustomLayout {
+    let layout = ArchVizLayout {
         spaced_edges: true,
         min_spacing: 120.0,
         ..Default::default()
@@ -642,7 +642,7 @@ fn test_layout_set_3() {
         (1, 3, None, None),
     ];
 
-    let layout = CustomLayout {
+    let layout = ArchVizLayout {
         allow_diagonals: false,
         min_spacing: 120.0,
         ..Default::default()
@@ -1359,7 +1359,7 @@ fn test_layout_set_4() {
         (9, 6, None, None), // additional cross-connections
     ];
 
-    let layout = CustomLayout {
+    let layout = ArchVizLayout {
         allow_diagonals: false,
         min_spacing: 120.0,
         ..Default::default()
@@ -1801,7 +1801,7 @@ fn test_layout_set_5() {
         (7, 1, Some(0), Some(2)), // ADAS_ECU -> Ethernet_Backbone (port 0 on ADAS, port 2 on Ethernet)
     ];
 
-    let layout = CustomLayout {
+    let layout = ArchVizLayout {
         allow_diagonals: false,
         min_spacing: 120.0,
         ..Default::default()
@@ -2167,7 +2167,7 @@ fn test_layout_set_6() {
         (10, 3, None, None), // ClusterECU -> Ethernet_Backbone
     ];
 
-    let layout = CustomLayout::default();
+    let layout = ArchVizLayout::default();
     let result = layout.layout(nodes, edges);
 
     println!("Automotive Network Nodes:");
@@ -2300,7 +2300,7 @@ fn test_layout_in_place() {
     }];
 
     // Create layout configuration with more iterations
-    let config = CustomLayout {
+    let config = ArchVizLayout {
         iterations: 100,
         repulsion_strength: 10000.0,
         attraction_strength: 0.01,
