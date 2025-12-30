@@ -368,7 +368,7 @@ fn test_layout_set_3() {
             position: Position { x: 0.0, y: 0.0 },
             ports: vec![
                 Port {
-                    position: Position { x: -10.0, y: 25.0 },
+                    position: Position { x: -5.0, y: 25.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -376,7 +376,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 100.0, y: 25.0 },
+                    position: Position { x: 95.0, y: 25.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -384,7 +384,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Output,
                 },
                 Port {
-                    position: Position { x: 45.0, y: -10.0 },
+                    position: Position { x: 45.0, y: -5.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -392,7 +392,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 45.0, y: 60.0 },
+                    position: Position { x: 45.0, y: 55.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -411,7 +411,7 @@ fn test_layout_set_3() {
             position: Position { x: 0.0, y: 0.0 },
             ports: vec![
                 Port {
-                    position: Position { x: -10.0, y: 35.0 },
+                    position: Position { x: -5.0, y: 35.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -419,7 +419,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 120.0, y: 35.0 },
+                    position: Position { x: 115.0, y: 35.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -427,7 +427,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Output,
                 },
                 Port {
-                    position: Position { x: 55.0, y: -10.0 },
+                    position: Position { x: 55.0, y: -5.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -435,7 +435,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 55.0, y: 80.0 },
+                    position: Position { x: 55.0, y: 75.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -454,7 +454,7 @@ fn test_layout_set_3() {
             position: Position { x: 0.0, y: 0.0 },
             ports: vec![
                 Port {
-                    position: Position { x: -10.0, y: 20.0 },
+                    position: Position { x: -5.0, y: 20.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -462,7 +462,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 90.0, y: 20.0 },
+                    position: Position { x: 85.0, y: 20.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -470,7 +470,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Output,
                 },
                 Port {
-                    position: Position { x: 40.0, y: -10.0 },
+                    position: Position { x: 40.0, y: -5.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -478,7 +478,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 40.0, y: 50.0 },
+                    position: Position { x: 40.0, y: 45.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -497,7 +497,7 @@ fn test_layout_set_3() {
             position: Position { x: 0.0, y: 0.0 },
             ports: vec![
                 Port {
-                    position: Position { x: -10.0, y: 30.0 },
+                    position: Position { x: -5.0, y: 30.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -505,7 +505,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 110.0, y: 30.0 },
+                    position: Position { x: 105.0, y: 30.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -513,7 +513,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Output,
                 },
                 Port {
-                    position: Position { x: 50.0, y: -10.0 },
+                    position: Position { x: 50.0, y: -5.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -521,7 +521,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 50.0, y: 70.0 },
+                    position: Position { x: 50.0, y: 65.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -540,7 +540,7 @@ fn test_layout_set_3() {
             position: Position { x: 0.0, y: 0.0 },
             ports: vec![
                 Port {
-                    position: Position { x: -10.0, y: 45.0 },
+                    position: Position { x: -5.0, y: 45.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -548,7 +548,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 140.0, y: 45.0 },
+                    position: Position { x: 135.0, y: 45.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -556,7 +556,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Output,
                 },
                 Port {
-                    position: Position { x: 65.0, y: -10.0 },
+                    position: Position { x: 65.0, y: -5.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,
@@ -564,7 +564,7 @@ fn test_layout_set_3() {
                     port_type: PortType::Input,
                 },
                 Port {
-                    position: Position { x: 65.0, y: 100.0 },
+                    position: Position { x: 65.0, y: 95.0 },
                     size: Size {
                         width: 10.0,
                         height: 10.0,

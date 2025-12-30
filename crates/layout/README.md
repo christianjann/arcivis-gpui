@@ -20,6 +20,8 @@ The library comes with 5 comprehensive test sets that demonstrate various layout
 ### Test Set 3: Automotive Safety & Comfort Systems
 ![](doc/test_set_3.svg)
 
+> Note: For this example the ports are centered on the edges of the node
+
 ### Test Set 4: Complex Automotive System
 ![](doc/test_set_4.svg)
 
