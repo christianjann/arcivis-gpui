@@ -1,5 +1,5 @@
 [package]
-name = "gpui-archviz"
+name = "arcivis-gpui"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -13,7 +13,7 @@ gpui-component = { workspace = true, features = ["tree-sitter-languages"] }
 gpui-component-assets.workspace = true
 gpui-component-story = { path = "../gpui-components" }
 reqwest_client = { path = "../reqwest_client" }
-archviz-graphview = { path = "../graphview" }
+arcivis-gpui-graphview = { path = "../graphview" }
 
 autocorrect.workspace = true
 chrono.workspace = true

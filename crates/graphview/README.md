@@ -17,7 +17,7 @@ Thank you to jerlendds for the original implementation!
 - **Layout Algorithms**:
   - Force-directed simulation with collision avoidance
   - Dagre hierarchical layout (Sugiyama method)
-  - ArchViz layout optimized for architecture diagrams with obstacle avoidance
+  - ArciVis layout optimized for architecture diagrams with obstacle avoidance
 - **Interactions** - Pan, zoom, drag nodes, click to select
 - **Edge Highlighting** - Visual feedback for selected node connections
 
@@ -90,6 +90,6 @@ for (gpui_node, layout_node) in gpui_nodes.iter_mut().zip(layout_nodes) {
 ## Dependencies
 
 - [GPUI](https://gpui.rs/) - GPU-accelerated UI framework
-- [archviz-layout](../layout/) - Custom orthogonal graph layout with obstacle avoidance
+- [arcivis-layout](../layout/) - Custom orthogonal graph layout with obstacle avoidance
 - [dagre-rs](https://crates.io/crates/dagre-rs) - Hierarchical graph layout
 - [petgraph](https://crates.io/crates/petgraph) - Graph data structures

@@ -1,5 +1,4 @@
 /target
 doc/palette.png
 doc/*.webm
-crates/layout/test_set_*.svg
-archviz_layout.svg
+arcivis_layout.svg

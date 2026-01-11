@@ -1,6 +1,6 @@
-# Custom ArchViz Layout Algorithm
+# Custom ArciVis Layout Algorithm
 
-This document outlines the custom graph layout algorithm implemented in the [ArchViz Layout crate](../../crates/layout/). For API documentation and usage examples, see the [main crate documentation](../../crates/layout/README.md).
+This document outlines the custom graph layout algorithm implemented in the [ArciVis Layout crate](../../crates/layout/). For API documentation and usage examples, see the [main crate documentation](../../crates/layout/README.md).
 
 ## Current Implementation
 
@@ -64,7 +64,7 @@ The implementation includes 6 comprehensive test sets demonstrating different sc
 ## Configuration Options
 
 ```rust
-ArchVizLayout {
+ArciVisLayout {
     iterations: 100,                    // Force-directed iterations (default)
     repulsion_strength: 1000.0,         // Node repulsion force (default)
     attraction_strength: 0.1,           // Edge attraction force (default)
@@ -94,7 +94,7 @@ The layout crate integrates with the broader GPUI architecture visualization sys
 
 ## References
 
-- **Implementation**: [ArchViz Layout Crate](../crates/layout/README.md)
+- **Implementation**: [ArciVis Layout Crate](../crates/layout/README.md)
 - **Examples**: See test sets in `crates/layout/tests/layout.rs`
 - **Visualization**: SVG outputs in `crates/layout/doc/`
 - **Integration**: Used by `crates/graphview/` for GPUI rendering

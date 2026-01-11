@@ -74,7 +74,7 @@ impl Render for AppTitleBar {
                             .small()
                             .ghost()
                             .on_click(|_, _, cx| {
-                                cx.open_url("https://github.com/christianjann/gpui-archviz")
+                                cx.open_url("https://github.com/christianjann/arcivis-gpui")
                             }),
                     )
                     .child(

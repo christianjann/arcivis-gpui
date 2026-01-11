@@ -4,7 +4,6 @@ members = [
     "crates/viewer",
     "crates/gpui-components",
     "crates/graphview",
-    "crates/layout",
 ]
 resolver = "2"
 
@@ -16,9 +15,12 @@ authors = ["Christian Jann <christian.jann@ymail.com>"]
 version = "0.1.0"
 
 [workspace.dependencies]
-gpui-component = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz" }
-gpui-component-macros = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz" }
-gpui-component-assets = { git = "https://github.com/christianjann/gpui-component.git", branch = "archviz" }
+arcivis-layout = { git = "https://github.com/christianjann/arcivis-layout.git" }
+#arcivis-layout = { path = "../arcivis-layout" }
+
+gpui-component = { git = "https://github.com/christianjann/gpui-component.git", branch = "arcivis" }
+gpui-component-macros = { git = "https://github.com/christianjann/gpui-component.git", branch = "arcivis" }
+gpui-component-assets = { git = "https://github.com/christianjann/gpui-component.git", branch = "arcivis" }
 
 gpui = { version = "0.2.2" }
 gpui-macros = "0.2.2"

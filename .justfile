@@ -37,4 +37,4 @@ watch:
     cargo watch -x 'run'
 
 layout-test:
-    RUST_LOG=debug cargo test -p archviz-layout -- --nocapture
+    RUST_LOG=debug cargo test -p arcivis-layout -- --nocapture

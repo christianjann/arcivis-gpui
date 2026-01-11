@@ -4,7 +4,7 @@ This directory contains detailed documentation for various graph layout algorith
 
 ## Available Layout Algorithms
 
-### [Custom ArchViz Layout](custom.md)
+### [Custom ArciVis Layout](custom.md)
 The primary layout algorithm developed specifically for this project, optimized for vehicle E/E architecture diagrams.
 
 - **Type**: Force-directed with orthogonal edge routing
@@ -40,14 +40,14 @@ Eclipse Layout Kernel - a comprehensive layout framework with multiple algorithm
 
 | Algorithm | Type | Routing | Best Use Case | Performance |
 |-----------|------|---------|---------------|-------------|
-| Custom ArchViz | Force-directed + Orthogonal | Manhattan with obstacles | Architecture diagrams | Medium |
+| Custom ArciVis | Force-directed + Orthogonal | Manhattan with obstacles | Architecture diagrams | Medium |
 | Force-Directed | Physics simulation | Straight lines | General graphs | Medium |
 | Dagre | Hierarchical | Orthogonal | Flowcharts | Fast |
 | ELK | Modular | Configurable | Complex layouts | Variable |
 
 ## Implementation Status
 
-- ✅ **Custom ArchViz**: Fully implemented and integrated
+- ✅ **Custom ArciVis**: Fully implemented and integrated
 - ✅ **Force-Directed**: Fully implemented and integrated
 - ✅ **Dagre**: Fully implemented and integrated
 - ❌ **ELK**: Documented for reference, not implemented

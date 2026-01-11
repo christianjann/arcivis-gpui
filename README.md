@@ -1,6 +1,6 @@
-# GPUI Architecture Visualizer Demo
+# ArciVis GPUI
 
-A demo application for experimenting with [GPUI](https://gpui.rs/) and layouting vehicle E/E architecture diagrams.
+A demo application for visualizing vehicle E/E architectures and experimenting with [GPUI](https://gpui.rs/) and layout algorithms.
 
 ![Demo Screenshot](doc/screenshot.png)
 
@@ -32,7 +32,7 @@ This is an experimental project to explore:
 - **[Rust](https://www.rust-lang.org/)** - Systems programming language
 - **[GPUI](https://gpui.rs/)** - GPU-accelerated UI framework from Zed
 - **[gpui-component](https://github.com/longbridge/gpui-component)** - UI component library for GPUI
-- **[archviz-layout](../crates/layout/)** - Specialized layout algorithm for architecture diagrams with obstacle-aware routing
+- **[arcivis-layout](https://github.com/christianjann/arcivis-layout)** - Specialized layout algorithm for architecture diagrams with obstacle-aware routing
 - **[dagre-rs](https://crates.io/crates/dagre-rs)** - Hierarchical graph layout (Sugiyama method)
 - **[petgraph](https://crates.io/crates/petgraph)** - Graph data structures
 - **[KDL](https://kdl.dev/)** - Document language for model files
@@ -40,7 +40,7 @@ This is an experimental project to explore:
 ## Features
 
 - 📊 **Graph Visualization** - Interactive node-based diagrams
-- 🔄 **Multiple Layouts** - Force-directed simulation, Dagre hierarchical layout and ArchViz layout optimized for architecture diagrams
+- 🔄 **Multiple Layouts** - Force-directed simulation, Dagre hierarchical layout and ArciVis layout optimized for architecture diagrams
 - 🖱️ **Interactive** - Pan, zoom, drag nodes, click to select
 - 🎨 **Edge Highlighting** - Orange for outgoing edges, blue for incoming edges
 - 📦 **Nested Nodes** - ECUs contain partitions which contain software components
@@ -50,15 +50,15 @@ This is an experimental project to explore:
 ## Documentation
 
 - **[Layout Algorithms](doc/layout/README.md)**: Overview and documentation for all graph layout algorithms
-- **[Layout Crate](crates/layout/README.md)**: API documentation for the layout library
+- **[Layout Crate](https://github.com/christianjann/arcivis-layout/blob/master/README.md)**: API documentation for the layout library
 - **[GraphView Crate](crates/graphview/README.md)**: Documentation for the GPUI graph visualization component
 
 ## Building
 
 ```bash
 # Clone the repository
-git clone https://github.com/christianjann/gpui-archviz
-cd gpui-archviz
+git clone https://github.com/christianjann/arcivis-gpui
+cd arcivis-gpui
 
 # Build and run
 cargo run
@@ -73,8 +73,8 @@ cargo run
    - **Zoom**: `+`/`-` buttons or mouse wheel
    - **Pan**: Middle mouse button drag or scroll
    - **Fit**: Click "Fit" to fit all nodes in view
-   - **Layout**: Toggle between "Force" (physics simulation), "Dagre" (hierarchical), and "ArchViz" (orthogonal) layout modes
-   - **Play/Refresh**: In Force mode, toggles simulation; in Dagre/ArchViz modes, re-applies layout
+   - **Layout**: Toggle between "Force" (physics simulation), "Dagre" (hierarchical), and "ArciVis" (orthogonal) layout modes
+   - **Play/Refresh**: In Force mode, toggles simulation; in Dagre/ArciVis modes, re-applies layout
 
 ## Model Format (KDL)
 

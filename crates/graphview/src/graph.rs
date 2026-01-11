@@ -24,8 +24,8 @@ pub enum LayoutMode {
     Force,
     /// Dagre hierarchical layout (Sugiyama method)
     Dagre,
-    /// Custom ArchViz layout with orthogonal edge routing
-    ArchViz,
+    /// Custom ArciVis layout with orthogonal edge routing
+    ArciVis,
 }
 
 pub struct Graph {
@@ -51,7 +51,7 @@ pub struct Graph {
     pub layout_mode: LayoutMode,
     /// Subscriptions to node events
     node_subscriptions: Vec<Subscription>,
-    /// Track if nodes are currently being dragged (for ArchViz performance)
+    /// Track if nodes are currently being dragged (for ArciVis performance)
     pub is_dragging_nodes: bool,
 }
 
@@ -232,9 +232,9 @@ impl Graph {
 
     /// Handle a node being moved
     pub fn handle_node_moved(&mut self, _node_id: u64, cx: &mut Context<Self>) {
-        if self.layout_mode == LayoutMode::ArchViz {
+        if self.layout_mode == LayoutMode::ArciVis {
             // During dragging, just clear paths to use fast Manhattan routing
-            // We'll recalculate ArchViz routes when dragging stops
+            // We'll recalculate ArciVis routes when dragging stops
             for edge in &mut self.edges {
                 edge.path.clear();
             }
@@ -248,15 +248,15 @@ impl Graph {
         cx.notify();
     }
 
-    /// Handle when node dragging ends - recalculate ArchViz routes
+    /// Handle when node dragging ends - recalculate ArciVis routes
     pub fn handle_drag_ended(&mut self, cx: &mut Context<Self>) {
         self.is_dragging_nodes = false;
-        if self.layout_mode == LayoutMode::ArchViz {
+        if self.layout_mode == LayoutMode::ArciVis {
             // Defer the expensive recalculation to avoid entity conflicts
             let graph_entity = cx.entity();
             cx.defer(move |cx| {
                 cx.update_entity(&graph_entity, |graph, cx| {
-                    graph.recalculate_archviz_edges(cx);
+                    graph.recalculate_arcivis_edges(cx);
                 });
             });
         }
@@ -430,16 +430,16 @@ impl Graph {
         cx.notify();
     }
 
-    /// Recalculate edge paths using ArchViz orthogonal routing with current node positions
-    pub fn recalculate_archviz_edges(&mut self, cx: &mut Context<Self>) {
-        use archviz_layout::{ArchVizLayout, Node, Port, PortType, Position, Size};
+    /// Recalculate edge paths using ArciVis orthogonal routing with current node positions
+    pub fn recalculate_arcivis_edges(&mut self, cx: &mut Context<Self>) {
+        use arcivis_layout::{ArciVisLayout, Node, Port, PortType, Position, Size};
 
         let n = self.nodes.len();
         if n == 0 {
             return;
         }
 
-        // Convert GraphNode entities to archviz-layout Node structs using CURRENT positions
+        // Convert GraphNode entities to arcivis-layout Node structs using CURRENT positions
         let mut layout_nodes: Vec<Node> = Vec::with_capacity(n);
         for node_entity in self.nodes.iter() {
             let (name, width, height, x, y) = cx.read_entity(node_entity, |node, _| {
@@ -508,8 +508,8 @@ impl Graph {
             .map(|edge| (edge.source, edge.target, Some(0), Some(0)))
             .collect();
 
-        // Run the archviz layout algorithm with fixed positions
-        let layout = ArchVizLayout::default();
+        // Run the arcivis layout algorithm with fixed positions
+        let layout = ArciVisLayout::default();
         let routed_edges = layout.route_edges_only(&layout_nodes, &layout_edges);
 
         // Only update edge paths, don't move nodes
@@ -527,15 +527,15 @@ impl Graph {
         cx.notify();
     }
 
-    pub fn apply_archviz_layout(&mut self, cx: &mut Context<Self>) {
-        use archviz_layout::{ArchVizLayout, Node, Port, PortType, Position, Size};
+    pub fn apply_arcivis_layout(&mut self, cx: &mut Context<Self>) {
+        use arcivis_layout::{ArciVisLayout, Node, Port, PortType, Position, Size};
 
         let n = self.nodes.len();
         if n == 0 {
             return;
         }
 
-        // Convert GraphNode entities to archviz-layout Node structs
+        // Convert GraphNode entities to arcivis-layout Node structs
         let mut layout_nodes: Vec<Node> = Vec::with_capacity(n);
         for (i, node_entity) in self.nodes.iter().enumerate() {
             let (name, width, height) = cx.read_entity(node_entity, |node, _| {
@@ -600,15 +600,15 @@ impl Graph {
             .map(|edge| (edge.source, edge.target, Some(0), Some(0)))
             .collect();
 
-        // Run the archviz layout algorithm
-        let layout = ArchVizLayout::default();
+        // Run the arcivis layout algorithm
+        let layout = ArciVisLayout::default();
         let result = layout.layout(layout_nodes, layout_edges);
 
         //print!("{:?}", &result);
         // Generate SVG for debugging
-        use archviz_layout::generate_svg;
-        generate_svg(&result, "archviz_layout.svg", true, true);
-        println!("Generated SVG: archviz_layout.svg");
+        use arcivis_layout::generate_svg;
+        generate_svg(&result, "arcivis_layout.svg", true, true);
+        println!("Generated SVG: arcivis_layout.svg");
 
         println!("Layout completed, result has {} nodes", result.nodes.len());
         for (i, node) in result.nodes.iter().enumerate() {
@@ -797,9 +797,9 @@ impl Render for Graph {
                         (false, false) => EdgeSelection::None,
                     };
 
-                    // Use stored path only for ArchViz mode, otherwise calculate ports dynamically
+                    // Use stored path only for ArciVis mode, otherwise calculate ports dynamically
                     let path_points: Vec<Point<Pixels>> =
-                        if layout_mode == LayoutMode::ArchViz && !edge.path.is_empty() {
+                        if layout_mode == LayoutMode::ArciVis && !edge.path.is_empty() {
                             // Transform stored path to screen coordinates
                             edge.path
                                 .iter()
@@ -1001,7 +1001,7 @@ impl Render for Graph {
             let layout_label = match layout_mode {
                 LayoutMode::Force => "Force",
                 LayoutMode::Dagre => "Dagre",
-                LayoutMode::ArchViz => "ArchViz",
+                LayoutMode::ArciVis => "ArciVis",
             };
             let layout_button = div()
                 .px(px(8.0))
@@ -1028,16 +1028,16 @@ impl Render for Graph {
                                 LayoutMode::Dagre
                             }
                             LayoutMode::Dagre => {
-                                // Clear stored paths when switching to ArchViz
+                                // Clear stored paths when switching to ArciVis
                                 for edge in &mut this.edges {
                                     edge.path.clear();
                                 }
-                                // Apply archviz layout immediately when switching to it
-                                this.apply_archviz_layout(cx);
+                                // Apply arcivis layout immediately when switching to it
+                                this.apply_arcivis_layout(cx);
                                 this.playing = false; // Stop force simulation
-                                LayoutMode::ArchViz
+                                LayoutMode::ArciVis
                             }
-                            LayoutMode::ArchViz => {
+                            LayoutMode::ArciVis => {
                                 // Clear stored paths when switching back to Force
                                 for edge in &mut this.edges {
                                     edge.path.clear();
@@ -1486,9 +1486,9 @@ impl Render for Graph {
                     .text_size(px(12.0))
                     .child(div().text_color(button_text_color).child(
                         if self.layout_mode == LayoutMode::Dagre
-                            || self.layout_mode == LayoutMode::ArchViz
+                            || self.layout_mode == LayoutMode::ArciVis
                         {
-                            "⟳" // Refresh/relayout icon for dagre and archviz
+                            "⟳" // Refresh/relayout icon for dagre and arcivis
                         } else if self.playing {
                             "||" // Pause symbol (using ASCII for better visibility)
                         } else {
@@ -1507,9 +1507,9 @@ impl Render for Graph {
                                         // In Dagre mode, clicking applies the layout once
                                         this.apply_dagre_layout(cx);
                                     }
-                                    LayoutMode::ArchViz => {
-                                        // In ArchViz mode, clicking applies the layout once
-                                        this.apply_archviz_layout(cx);
+                                    LayoutMode::ArciVis => {
+                                        // In ArciVis mode, clicking applies the layout once
+                                        this.apply_arcivis_layout(cx);
                                     }
                                 }
                                 cx.notify();
